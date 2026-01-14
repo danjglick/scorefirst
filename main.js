@@ -11,25 +11,24 @@ const BALL = {
 	flingDivisor: 2,
 	minimumSpeed: 10,
 	xPos: randomX(),
-	yPos: randomY(),
+	yPos: visualViewport.height - SHIM,
 	xVel: 0,
 	yVel: 0,
 }
+const GOALS_XPOS = randomX()
 const GOALS = {
 	width: visualViewport.width / 10,
 	height: visualViewport.width / 10,
 	postThickness: 3,
 	blue: {
 		color: "blue",
-		xPos: randomX(),
-		yPos: randomY(),
-		angle: randomAngle(),
+		xPos: GOALS_XPOS,
+		yPos: visualViewport.height - SHIM
 	},
 	red: {
 		color: "red",
-		xPos: randomX(),
-		yPos: randomY(),
-		angle: randomAngle()
+		xPos: GOALS_XPOS,
+		yPos: 0,
 	}
 }
 const ATHLETES = {
@@ -101,6 +100,9 @@ function startGame() {
 	generateRedTeam()
 	generateWalls()
 	loopGame()
+}
+
+function placeGoals() {
 }
 
 function generateRedTeam() {
@@ -175,14 +177,8 @@ function drawBall() {
 }
 
 function drawGoal(goal) {
-	context.save()
-	context.translate(goal.xPos, goal.yPos)
-	context.rotate(goal.angle)
 	context.fillStyle = goal.color
-	context.fillRect(-goals.postThickness, 0, goals.postThickness, goals.height)
-	context.fillRect(goals.width, 0, goals.postThickness, goals.height)
-	context.fillRect(-goals.postThickness, goals.height, goals.width + goals.postThickness * 2, goals.postThickness)
-	context.restore()
+	context.fillRect(goal.xPos, goal.yPos, goals.width, goals.height)
 }
 
 function drawTeam(team) {
