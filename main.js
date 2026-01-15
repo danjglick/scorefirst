@@ -159,7 +159,7 @@ function draw() {
 	drawBall()
 	drawRedTeam()
 	drawBlueTeam()
-	drawBlueGoal(0)
+	drawBlueGoal()
 	drawRedGoal()
 	drawWalls()
 }
