@@ -7,6 +7,7 @@ const SHIM = visualViewport.width / 10
 const GREY_COLOR = "grey"
 const BLUE_COLOR = "blue"
 const RED_COLOR = "red"
+const YELLOW_COLOR = "yellow"
 const BALL_RADIUS = visualViewport.width / 20
 const FRICTION = .99
 const MIN_SPEED = 10
@@ -40,6 +41,8 @@ let touch1 = {
 	yPos: 0
 }
 let isUserFlingingBall = false
+let blueScore = 0
+let redScore = 0
 
 function initializeGame() {
 	canvas = document.getElementById("canvas")
@@ -102,7 +105,6 @@ function placeRedTeam() {
 	}
 }
 
-
 function placeGoals() {
 	let goalXPos = randomX()
 	redGoal.xPos = goalXPos
@@ -162,6 +164,7 @@ function draw() {
 	drawBlueGoal()
 	drawRedGoal()
 	drawWalls()
+	drawScore()
 }
 
 function drawBall() {
@@ -211,6 +214,12 @@ function drawWalls() {
 		context.lineTo(wall.xPosOfPointB, wall.yPosOfPointB)
 		context.stroke()
 	}
+}
+
+function drawScore() {
+	context.font = "50px Arial"
+	context.fillStyle = YELLOW_COLOR
+	context.fillText(`${blueScore}-${redScore}`, canvas.width - 2 * SHIM, SHIM)
 }
 
 function isObjectCloseToObject(objectA, distance, objectB) {
