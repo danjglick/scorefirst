@@ -8,6 +8,7 @@ const GREY_COLOR = "grey"
 const BLUE_COLOR = "blue"
 const RED_COLOR = "red"
 const YELLOW_COLOR = "yellow"
+const WHITE_COLOR = "white"
 const BALL_RADIUS = visualViewport.width / 20
 const FRICTION = .99
 const MIN_SPEED = 10
@@ -18,37 +19,27 @@ const GOAL_HEIGHT = visualViewport.height / 30
 const WALL_WIDTH = visualViewport.width / 10
 
 let canvas;
-let context;
+let ctx;
 let ball = {
 	xPos: 0,
 	yPos: 0,
 	xVel: 0,
 	yVel: 0
 }
-let blueTeam = []
-let redTeam = []
-let redGoal = {
-	xPos: 0,
-	yPos: 0
-}
-let blueGoal = {
-	xPos: 0,
-	yPos: 0
-}
+let team = []
+let goal = {}
 let walls = []
 let touch1 = {
 	xPos: 0,
 	yPos: 0
 }
 let isUserFlingingBall = false
-let blueScore = 0
-let redScore = 0
 
 function initializeGame() {
 	canvas = document.getElementById("canvas")
 	canvas.width = visualViewport.width
 	canvas.height = visualViewport.height
-	context = canvas.getContext('2d')
+	ctx = canvas.getContext('2d')
 	document.addEventListener("touchstart", handleTouchstart)
 	document.addEventListener("touchmove", handleTouchmove, { passive: false })
 	startGame()
@@ -59,13 +50,6 @@ function handleTouchstart(e) {
 	touch1.yPos = e.touches[0].clientY
 	if (isObjectCloseToObject(touch1, SHIM, ball)) {
 		isUserFlingingBall = true
-	} else {
-		blueTeam.push(
-			{
-				xPos: touch1.xPos,
-				yPos: touch1.yPos
-			}
-		)
 	}
 }
 
@@ -83,9 +67,8 @@ function handleTouchmove(e) {
 
 function startGame() {
 	placeBall()
-	placeRedTeam()
-	placeGoals()
-	placeWalls()
+	placeTeam()
+	placeGoal()
 	loopGame()
 }
 
@@ -94,9 +77,9 @@ function placeBall() {
 	ball.yPos = canvas.height - SHIM
 }
 
-function placeRedTeam() {
+function placeTeam() {
 	for (let i=0; i<5; i++) {
-		redTeam.push(
+		team.push(
 			{
 				xPos: randomX(),
 				yPos: randomY()
@@ -105,28 +88,55 @@ function placeRedTeam() {
 	}
 }
 
-function placeGoals() {
-	let goalXPos = randomX()
-	redGoal.xPos = goalXPos
-	redGoal.yPos = canvas.height - SHIM
-	blueGoal.xPos = goalXPos
-	blueGoal.yPos = 0
-}
-
-function placeWalls() {
-	for (let i=0; i<5; i++) {
-		let angle = randomAngle()
-		let xPosOfPointA = randomX()
-		let yPosOfPointA = randomY()
-		walls.push(
-			{
-				xPosOfPointA: xPosOfPointA,
-				yPosOfPointA: yPosOfPointA,
-				xPosOfPointB: xPosOfPointA + WALL_WIDTH * Math.cos(angle),
-				yPosOfPointB: yPosOfPointA + WALL_WIDTH * Math.sin(angle)
-			}
-		)
+function placeGoal() {
+	let edgeSpots = []
+	let spot = {
+		xPos: 0,
+		yPos: 0
 	}
+	while (spot.xPos < canvas.width) {
+		edgeSpots.push(spot)
+		spot = {
+			xPos: spot.xPos += 1,
+			yPos: spot.yPos
+		}
+	}
+	spot = {
+		xPos: canvas.width - GOAL_WIDTH,
+		yPos: 0
+	}
+	while (spot.yPos < canvas.height) {
+		edgeSpots.push(spot)
+		spot = {
+			xPos: spot.xPos,
+			yPos: spot.yPos += 1
+		}
+	}
+	spot = {
+		xPos: canvas.width - GOAL_WIDTH,
+		yPos: canvas.height - GOAL_HEIGHT
+	}
+	while (spot.xPos > 0) {
+		edgeSpots.push(spot)
+		spot = {
+			xPos: spot.xPos -= 1,
+			yPos: spot.yPos
+		}
+	}
+	spot = {
+		xPos: 0,
+		yPos: canvas.height - GOAL_HEIGHT
+	}
+	while (spot.yPos > 0) {
+		edgeSpots.push(spot)
+		spot = {
+			xPos: spot.xPos,
+			yPos: spot.yPos -= 1
+		}
+	}
+	let randomSpot = edgeSpots[Math.floor(Math.random() * edgeSpots.length)]
+	goal.xPos = randomSpot.xPos
+	goal.yPos = randomSpot.yPos
 }
 
 function loopGame() { // MAIN GAME LOOP
@@ -139,7 +149,7 @@ function loopGame() { // MAIN GAME LOOP
 function moveBall() {
 	ball.xPos += ball.xVel
 	ball.yPos += ball.yVel
-	ball.xVel *= FRICTION
+	ball.xVel *= FRICTION 
 	ball.yVel *= FRICTION
 	if (Math.abs(ball.yVel) < MIN_SPEED && Math.abs(ball.xVel) < MIN_SPEED) {
 		ball.xVel = 0
@@ -157,69 +167,32 @@ function handleCollisions() {
 }
 
 function draw() {
-	context.clearRect(0, 0, canvas.width, canvas.height)
+	ctx.clearRect(0, 0, canvas.width, canvas.height)
 	drawBall()
-	drawRedTeam()
-	drawBlueTeam()
-	drawBlueGoal()
-	drawRedGoal()
-	drawWalls()
-	drawScore()
+	drawTeam()
+	drawGoal()
 }
 
 function drawBall() {
-	context.beginPath()
-	context.arc(ball.xPos, ball.yPos, BALL_RADIUS, 0, 2 * Math.PI)
-	context.fillStyle = GREY_COLOR
-	context.fill()
+	ctx.beginPath()
+	ctx.arc(ball.xPos, ball.yPos, BALL_RADIUS, 0, 2 * Math.PI)
+	ctx.fillStyle = GREY_COLOR
+	ctx.fill()
 }
 
-function drawBlueGoal() {
-	context.fillStyle = BLUE_COLOR
-	context.fillRect(blueGoal.xPos, blueGoal.yPos, GOAL_WIDTH, GOAL_HEIGHT)
+function drawGoal() {
+	ctx.fillStyle = "brown"
+	ctx.fillRect(goal.xPos, goal.yPos, GOAL_WIDTH, GOAL_HEIGHT)
 }
 
-function drawRedGoal() {
-	context.fillStyle = RED_COLOR
-	context.fillRect(redGoal.xPos, redGoal.yPos, GOAL_WIDTH, GOAL_HEIGHT)
-}
-
-function drawBlueTeam() {
-	for (let i=0; i<blueTeam.length; i++) {
-		let member = blueTeam[i]
-		context.beginPath()
-		context.arc(member.xPos, member.yPos, ATHLETE_RADIUS, 0, 2 * Math.PI)
-		context.fillStyle = BLUE_COLOR
-		context.fill()	
+function drawTeam() {
+	for (let i=0; i<team.length; i++) {
+		let member = team[i]
+		ctx.beginPath()
+		ctx.arc(member.xPos, member.yPos, ATHLETE_RADIUS, 0, 2 * Math.PI)
+		ctx.fillStyle = BLUE_COLOR
+		ctx.fill()	
 	}
-}
-
-function drawRedTeam() {
-	for (let i=0; i<redTeam.length; i++) {
-		let member = redTeam[i]
-		context.beginPath()
-		context.arc(member.xPos, member.yPos, ATHLETE_RADIUS, 0, 2 * Math.PI)
-		context.fillStyle = RED_COLOR
-		context.fill()	
-	}
-}
-
-function drawWalls() {
-	for (let i=0; i<walls.length; i++) {
-		let wall = walls[i]
-		context.lineWidth = 3
-		context.strokeStyle = GREY_COLOR
-		context.beginPath()
-		context.moveTo(wall.xPosOfPointA, wall.yPosOfPointA)
-		context.lineTo(wall.xPosOfPointB, wall.yPosOfPointB)
-		context.stroke()
-	}
-}
-
-function drawScore() {
-	context.font = "50px Arial"
-	context.fillStyle = YELLOW_COLOR
-	context.fillText(`${blueScore}-${redScore}`, canvas.width - 2 * SHIM, SHIM)
 }
 
 function isObjectCloseToObject(objectA, distance, objectB) {
@@ -235,8 +208,4 @@ function randomX() {
 
 function randomY() {
 	return visualViewport.height * Math.random()
-}
-
-function randomAngle() {
-	return Math.PI * 2 * Math.random()
 }
