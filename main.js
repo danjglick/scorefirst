@@ -12,11 +12,7 @@ const GOAL_HEIGHT = visualViewport.height / 30
 const ATHLETE_RADIUS = visualViewport.width / 20
 const WALL_WIDTH = visualViewport.width / 10
 const CORNER_RADIUS = visualViewport.width / 15
-const GREY_COLOR = "grey"
-const BLUE_COLOR = "blue"
-const RED_COLOR = "red"
-const YELLOW_COLOR = "yellow"
-const WHITE_COLOR = "white"
+const FRAMES_PER_REWARD = 10
 
 let canvas;
 let ctx;
@@ -164,7 +160,7 @@ function handleTeammates() {
 				xPos: teammate.xPos,
 				yPos: teammate.yPos,
 				points: rewardPoints,
-				framesLeft: 110
+				framesLeft: FRAMES_PER_REWARD
 			})
 			team.splice(i, 1)
 			score = score + rewardPoints
@@ -251,7 +247,7 @@ function drawReward() {
 		ctx.fillStyle = "yellow"
 		ctx.fillText(`+${reward.points}`, reward.xPos, reward.yPos)
 		reward.framesLeft--
-		if (reward.framesLeft == 90) {
+		if (reward.framesLeft == 0) {
 			rewards.splice(i, 1)
 		}
 	}
