@@ -6,12 +6,13 @@ const MS_PER_FRAME = 1000 / FPS
 const SHIM = visualViewport.width / 10
 const BALL_RADIUS = visualViewport.width / 20
 const FRICTION = .99
-const MIN_SPEED = 10
+const MIN_SPEED = 20
 const FLING_DIVISOR = 2
 const GOAL_WIDTH = visualViewport.width / 10
 const GOAL_HEIGHT = visualViewport.height / 30
 const ATHLETE_RADIUS = visualViewport.width / 20
 const WALL_WIDTH = visualViewport.width / 10
+const CORNER_RADIUS = visualViewport.width / 15
 const GREY_COLOR = "grey"
 const BLUE_COLOR = "blue"
 const RED_COLOR = "red"
@@ -26,7 +27,6 @@ let ball = {
 	xVel: 0,
 	yVel: 0
 }
-let goal = {}
 let team = []
 let wallPath = []
 let wallPaths = []
@@ -35,6 +35,10 @@ let touch1 = {
 	yPos: 0
 }
 let isFlingingBall = false
+let score = 0
+let tries = 0
+let perfectScore = 0
+let gameLoopTimeout = null
 
 function initializeGame() {
 	canvas = document.getElementById("canvas")
@@ -44,7 +48,8 @@ function initializeGame() {
 	document.addEventListener("touchstart", handleTouchstart)
 	document.addEventListener("touchmove", handleTouchmove, { passive: false })
 	document.addEventListener("touchend", handleTouchend)
-	startGame()
+	document.addEventListener("wheel", (e) => e.preventDefault(), { passive: false })
+	startNewGame()
 }
 
 function handleTouchstart(e) {
@@ -52,6 +57,7 @@ function handleTouchstart(e) {
 	touch1.yPos = e.touches[0].clientY
 	if (isObjectCloseToObject(touch1, SHIM, ball)) {
 		isFlingingBall = true
+		tries++
 	} else {
 		wallPath = []
 		wallPath.push(
@@ -69,7 +75,7 @@ function handleTouchmove(e) {
 		xPos: e.touches[0].clientX,
 		yPos: e.touches[0].clientY
 	}
-	if (isFlingingBall == true) {
+	if (isFlingingBall === true) {
 		ball.xVel = (touch2.xPos - touch1.xPos) / FLING_DIVISOR
 		ball.yVel = (touch2.yPos - touch1.yPos) / FLING_DIVISOR
 	} else {
@@ -83,70 +89,29 @@ function handleTouchend() {
 	}
 }
 
-function startGame() {
+function startNewGame() {
+	if (gameLoopTimeout !== null) {
+		clearTimeout(gameLoopTimeout)
+		gameLoopTimeout = null
+	}
+	isFlingingBall = false
 	placeBall()
-	placeGoal()
 	placeTeam()
+	clearWalls()
 	loopGame()
 }
 
 function placeBall() {
-	ball.xPos = randomX()
-	ball.yPos = canvas.height - SHIM
-}
-
-function placeGoal() {
-	let edgeSpots = []
-	let spot = {
-		xPos: 0,
-		yPos: 0
+	ball = {
+		xPos: randomX(),
+		yPos: canvas.height - SHIM,
+		xVel: 0,
+		yVel: 0
 	}
-	while (spot.xPos < canvas.width) {
-		edgeSpots.push(spot)
-		spot = {
-			xPos: spot.xPos += 1,
-			yPos: spot.yPos
-		}
-	}
-	spot = {
-		xPos: canvas.width - GOAL_WIDTH,
-		yPos: 0
-	}
-	while (spot.yPos < canvas.height) {
-		edgeSpots.push(spot)
-		spot = {
-			xPos: spot.xPos,
-			yPos: spot.yPos += 1
-		}
-	}
-	spot = {
-		xPos: canvas.width - GOAL_WIDTH,
-		yPos: canvas.height - GOAL_HEIGHT
-	}
-	while (spot.xPos > 0) {
-		edgeSpots.push(spot)
-		spot = {
-			xPos: spot.xPos -= 1,
-			yPos: spot.yPos
-		}
-	}
-	spot = {
-		xPos: 0,
-		yPos: canvas.height - GOAL_HEIGHT
-	}
-	while (spot.yPos > 0) {
-		edgeSpots.push(spot)
-		spot = {
-			xPos: spot.xPos,
-			yPos: spot.yPos -= 1
-		}
-	}
-	let randomSpot = edgeSpots[Math.floor(Math.random() * edgeSpots.length)]
-	goal.xPos = randomSpot.xPos
-	goal.yPos = randomSpot.yPos
 }
 
 function placeTeam() {
+	team = []
 	for (let i=0; i<5; i++) {
 		team.push(
 			{
@@ -157,11 +122,15 @@ function placeTeam() {
 	}
 }
 
+function clearWalls() {
+	wallPaths = []
+}
+
 function loopGame() { // MAIN GAME LOOP
 	moveBall()
 	handleCollisions()
 	draw()
-	setTimeout(loopGame, MS_PER_FRAME)
+	gameLoopTimeout = setTimeout(loopGame, MS_PER_FRAME)
 }
 
 function moveBall() {
@@ -176,16 +145,30 @@ function moveBall() {
 }
 
 function handleCollisions() {
-	handleEdges()
+	handleTeammates()
 	handleWalls()
+	handleEdges()
 }
 
 function handleEdges() {
 	if (ball.yPos <=0 || ball.yPos >= canvas.height) {
-		ball.yVel = -ball.yVel
+    ball.yVel = -ball.yVel
+  }
+  if (ball.xPos <= 0 || ball.xPos >= canvas.width) {
+    ball.xVel = -ball.xVel
 	}
-	if (ball.xPos <= 0 || ball.xPos >= canvas.width) {
-		ball.xVel = -ball.xVel
+}
+
+function handleTeammates() {
+	for (let i = 0; i < team.length; i++) {
+		if (isObjectCloseToObject(ball, SHIM, team[i])) {
+			team.splice(i, 1)
+			score = score + Math.round(100 / tries)
+			perfectScore += 100
+			if (team.length == 0) {
+				startNewGame()
+			}
+		}
 	}
 }
 
@@ -193,7 +176,7 @@ function handleWalls() {
 	wallPaths.forEach(path => {
 		for (let i = 1; i < path.length - 1; i++) {
 			let point = path[i]
-			if (Math.abs(ball.xPos - point.xPos) < SHIM && Math.abs(ball.yPos - point.yPos) < SHIM) {
+			if (isObjectCloseToObject(ball, SHIM, point)) {
 				let wallVectorX = path[i++].xPos - path[i--].xPos
 				let wallVectorY = path[i++].yPos - path[i--].yPos
 				let normalVectorX = -wallVectorY
@@ -213,20 +196,15 @@ function draw() {
 	ctx.clearRect(0, 0, canvas.width, canvas.height)
 	drawBall()
 	drawTeam()
-	drawGoal()
 	drawWalls()
+	drawScore()
 }
 
 function drawBall() {
 	ctx.beginPath()
 	ctx.arc(ball.xPos, ball.yPos, BALL_RADIUS, 0, 2 * Math.PI)
-	ctx.fillStyle = GREY_COLOR
+	ctx.fillStyle = "grey"
 	ctx.fill()
-}
-
-function drawGoal() {
-	ctx.fillStyle = "brown"
-	ctx.fillRect(goal.xPos, goal.yPos, GOAL_WIDTH, GOAL_HEIGHT)
 }
 
 function drawTeam() {
@@ -234,14 +212,14 @@ function drawTeam() {
 		let member = team[i]
 		ctx.beginPath()
 		ctx.arc(member.xPos, member.yPos, ATHLETE_RADIUS, 0, 2 * Math.PI)
-		ctx.fillStyle = BLUE_COLOR
+		ctx.fillStyle = "blue"
 		ctx.fill()	
 	}
 }
 
 function drawWalls() {
-	ctx.lineWith = 2
-	ctx.strokeStyle = "green"
+	ctx.lineWidth = 20
+	ctx.strokeStyle = "purple"
 	wallPaths.forEach(path => {
 		if (path.length < 2) {
 			return
@@ -253,6 +231,14 @@ function drawWalls() {
 		})
 		ctx.stroke()
 	})
+}
+
+function drawScore() {
+	ctx.font = "50px Arial"
+	ctx.fillStyle = "yellow"
+	ctx.fillText(`${score}`, 10, SHIM)
+	ctx.font = "25px Arial"
+	ctx.fillText(`of ${perfectScore}`, 10, SHIM * 2)
 }
 
 function isObjectCloseToObject(objectA, distance, objectB) {
