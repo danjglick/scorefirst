@@ -713,10 +713,24 @@ function handleCollisionWithGoodJob() {
 	if (!showGoodJob) return
 	
 	let ballRadius = getBallRadius()
-	let textHeight = 64 // Font size
-	let textY = canvas.height // Bottom aligned
 	
-	// Rectangle extends full width at bottom of screen
+	// Measure actual text dimensions using the same font settings as drawGoodJob
+	ctx.save()
+	ctx.font = "bold 64px Arial"
+	ctx.textAlign = "center"
+	ctx.textBaseline = "bottom"
+	let textMetrics = ctx.measureText(goodJobMessage)
+	let textWidth = textMetrics.width
+	let textHeight = textMetrics.actualBoundingBoxAscent + textMetrics.actualBoundingBoxDescent
+	if (textHeight === 0) {
+		// Fallback if actualBoundingBox not supported
+		textHeight = 64
+	}
+	let textX = canvas.width / 2
+	let textY = canvas.height // Bottom aligned (baseline position)
+	ctx.restore()
+	
+	// Rectangle bounds for the text (full width at bottom of screen)
 	let rectLeft = 0
 	let rectRight = canvas.width
 	let rectTop = textY - textHeight
