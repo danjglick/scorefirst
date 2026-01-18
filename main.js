@@ -1289,7 +1289,14 @@ function getRandomY() {
 
 function resizeCanvas() {
 	if (canvas) {
-		canvas.width = window.innerWidth
-		canvas.height = window.innerHeight
+		// Use visualViewport dimensions if available (more accurate on mobile)
+		// Otherwise fall back to window dimensions
+		if (visualViewport) {
+			canvas.width = visualViewport.width
+			canvas.height = visualViewport.height
+		} else {
+			canvas.width = window.innerWidth
+			canvas.height = window.innerHeight
+		}
 	}
 }
