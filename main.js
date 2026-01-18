@@ -37,6 +37,7 @@ let level = 0
 let gameLoopTimeout = null
 let fireworks = []
 let showGoodJob = false
+let goodJobMessage = "GOOD JOB"
 let goodJobTimeout = null
 let obstacleExplosionTimeout = null
 let tutorialExplosionTimeout = null
@@ -96,6 +97,7 @@ function generateLevel(isRetry = false, fewerSprites = false) {
 	fireworks = []
 	selectedForConversion = null
 	showGoodJob = false
+	goodJobMessage = "GOOD JOB"
 	// Clear any pending timeouts
 	if (goodJobTimeout !== null) {
 		clearTimeout(goodJobTimeout)
@@ -540,7 +542,17 @@ function handleCollisionWithTeammate() {
 			
 			// Explode all obstacles in red fireworks when last teammate is collected
 			if (wasLastTeammate) {
-				// Show "GOOD JOB" after tutorial text explodes (3 seconds total: 2s for tutorial + 1s delay)
+				// Determine message based on tries vs obstacles
+				let obstacleCount = obstacles.length
+				if (tries === 1) {
+					goodJobMessage = "GOOD JOB"
+				} else if (tries > obstacleCount) {
+					goodJobMessage = "BAD JOB"
+				} else {
+					goodJobMessage = "OK JOB"
+				}
+				
+				// Show message after tutorial text explodes (3 seconds total: 2s for tutorial + 1s delay)
 				goodJobTimeout = setTimeout(() => {
 					showGoodJob = true
 					goodJobTimeout = null
@@ -929,7 +941,7 @@ function drawGoodJob() {
 	let textColor = "#d8d8d8"
 	
 	ctx.font = "bold 64px Arial"
-	let text = "GOOD JOB"
+	let text = goodJobMessage
 	
 	// Center text horizontally, align with bottom of viewport
 	let textX = canvas.width / 2
