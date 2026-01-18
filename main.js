@@ -61,28 +61,20 @@ function initializeGame() {
 			generateLevel(true)
 		}
 	})
-	document.getElementById("nextButton").addEventListener("click", () => {
-		// Always increment by 1 from current sprite count
-		let currentCount = team.length > 0 ? team.length : obstacles.length > 0 ? obstacles.length : level
-		// Set level to match the target count so placeTeam() and placeObstacles() work correctly
-		level = currentCount + 1
-		generateLevel(false, false, true) // true = skip level increment since we already set it
-	})
+	document.getElementById("nextButton").addEventListener("click", () => generateLevel())
 	document.addEventListener("wheel", (e) => e.preventDefault(), { passive: false })
 	generateLevel()
 }
 
-function generateLevel(isRetry = false, fewerSprites = false, skipLevelIncrement = false) {
+function generateLevel(isRetry = false, fewerSprites = false) {
 	placeBall()
 	// If retry (normal retry or retry going to next level), remove points gained during current level
 	if (isRetry || (fewerSprites && pointsThisLevel > 0)) {
 		totalScore -= pointsThisLevel
 	}
 	if (!isRetry || fewerSprites) {
-		if (!fewerSprites && !skipLevelIncrement) {
-			// Only increment level if not using fewer sprites and not skipping increment
-			// When fewerSprites is true, we're staying at the same level but reducing count
-			// When skipLevelIncrement is true (from next button), level was already set correctly
+		if (!fewerSprites) {
+			// Only increment level if not using fewer sprites (normal next button)
 			level++
 		}
 		if (fewerSprites) {
@@ -102,6 +94,7 @@ function generateLevel(isRetry = false, fewerSprites = false, skipLevelIncrement
 		}
 	} else {
 		// Normal retry - restore obstacles and teammates for current level
+		// Level stays the same, so tutorial stays the same
 		placeTeam()
 		placeObstacles()
 	}
@@ -995,7 +988,7 @@ function updateTutorial() {
 	if (level === 1) {
 		textContent = "Fling the grey ball at the blue ball"
 	} else if (level === 2) {
-		textContent = "Get all the blue balls - in as few tries as possible"
+		textContent = "Blast all the blue balls in as few tries as possible"
 	} else if (level === 3) {
 		textContent = "Switch red and blue balls by tapping them"
 	} else if (level === 4) {
