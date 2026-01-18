@@ -36,6 +36,10 @@ let pointsThisLevel = 0 // Track points gained during current level for retry
 let level = 0
 let gameLoopTimeout = null
 let fireworks = []
+let showGoodJob = false
+let goodJobTimeout = null
+let obstacleExplosionTimeout = null
+let tutorialExplosionTimeout = null
 
 function initializeGame() {
 	canvas = document.getElementById("canvas")
@@ -81,12 +85,30 @@ function generateLevel(isRetry = false, fewerSprites = false) {
 			placeTeam()
 			placeObstacles()
 		}
+	} else {
+		// Normal retry - restore obstacles and teammates for current level
+		placeTeam()
+		placeObstacles()
 	}
 	teamRemaining = JSON.parse(JSON.stringify(team))
 	walls = []
 	wall = []
 	fireworks = []
 	selectedForConversion = null
+	showGoodJob = false
+	// Clear any pending timeouts
+	if (goodJobTimeout !== null) {
+		clearTimeout(goodJobTimeout)
+		goodJobTimeout = null
+	}
+	if (obstacleExplosionTimeout !== null) {
+		clearTimeout(obstacleExplosionTimeout)
+		obstacleExplosionTimeout = null
+	}
+	if (tutorialExplosionTimeout !== null) {
+		clearTimeout(tutorialExplosionTimeout)
+		tutorialExplosionTimeout = null
+	}
 	levelScore = 0
 	pointsThisLevel = 0 // Reset points gained this level
 	tries = 0
@@ -291,6 +313,8 @@ function placeTeamWithCount(teammateCount) {
 	let ballRadius = getBallRadius()
 	let minSeparation = 5 // Minimum gap between sprite edges
 	let maxAttempts = 100
+	// Exclude top area (score and buttons) unless it's a very high level and we need the space
+	let topExclusionZone = (level > 10 || teammateCount > 10) ? 0 : 80 // Top 80px exclusion for lower levels
 	
 	for (let i = 0; i < teammateCount; i++) {
 		let attempts = 0
@@ -300,7 +324,10 @@ function placeTeamWithCount(teammateCount) {
 		while (!validPosition && attempts < maxAttempts) {
 			// Ensure teammate is fully within canvas bounds
 			xPos = radius + (canvas.width - 2 * radius) * Math.random()
-			yPos = radius + (canvas.height - 2 * radius) * Math.random()
+			// Exclude top area unless high level
+			let minY = radius + topExclusionZone
+			let maxY = canvas.height - radius
+			yPos = minY + (maxY - minY) * Math.random()
 			validPosition = true
 			
 			// Check distance from ball using proper Euclidean distance
@@ -332,7 +359,9 @@ function placeTeamWithCount(teammateCount) {
 		// Fallback: ensure position is valid even if loop exhausted attempts
 		if (!validPosition) {
 			xPos = radius + (canvas.width - 2 * radius) * Math.random()
-			yPos = radius + (canvas.height - 2 * radius) * Math.random()
+			let minY = radius + topExclusionZone
+			let maxY = canvas.height - radius
+			yPos = minY + (maxY - minY) * Math.random()
 		}
 		
 		team.push({ 
@@ -348,6 +377,8 @@ function placeObstaclesWithCount(obstacleCount) {
 	let ballRadius = getBallRadius()
 	let teammateRadius = getTeammateRadius()
 	let minSeparation = 5 // Minimum gap between sprite edges
+	// Exclude top area (score and buttons) unless it's a very high level and we need the space
+	let topExclusionZone = (level > 10 || obstacleCount > 10) ? 0 : 80 // Top 80px exclusion for lower levels
 	
 	for (let i = 0; i < obstacleCount; i++) {
 		let attempts = 0
@@ -357,7 +388,10 @@ function placeObstaclesWithCount(obstacleCount) {
 		while (!validPosition && attempts < 100) {
 			// Ensure obstacle is fully within canvas bounds
 			xPos = obstacleRadius + (canvas.width - 2 * obstacleRadius) * Math.random()
-			yPos = obstacleRadius + (canvas.height - 2 * obstacleRadius) * Math.random()
+			// Exclude top area unless high level
+			let minY = obstacleRadius + topExclusionZone
+			let maxY = canvas.height - obstacleRadius
+			yPos = minY + (maxY - minY) * Math.random()
 			validPosition = true
 			
 			// Check distance from ball using proper Euclidean distance
@@ -403,7 +437,9 @@ function placeObstaclesWithCount(obstacleCount) {
 		// Fallback: ensure position is valid even if loop exhausted attempts
 		if (!validPosition) {
 			xPos = obstacleRadius + (canvas.width - 2 * obstacleRadius) * Math.random()
-			yPos = obstacleRadius + (canvas.height - 2 * obstacleRadius) * Math.random()
+			let minY = obstacleRadius + topExclusionZone
+			let maxY = canvas.height - obstacleRadius
+			yPos = minY + (maxY - minY) * Math.random()
 		}
 		
 		obstacles.push({ 
@@ -480,6 +516,7 @@ function handleCollision() {
 	handleCollisionWithWall()
 	handleCollisionWithObstacle()
 	handleCollisionWithEdge()
+	handleCollisionWithGoodJob()
 }
 
 function handleCollisionWithTeammate() {
@@ -491,6 +528,7 @@ function handleCollisionWithTeammate() {
 		let distance = Math.hypot(dx, dy)
 		if (distance < collisionDistance) {
 			let rewardPoints = Math.round(100 / Math.max(tries, 1))
+			let wasLastTeammate = teamRemaining.length === 1
 			let teammateX = teammate.xPos
 			let teammateY = teammate.yPos
 			teamRemaining.splice(i, 1)
@@ -499,6 +537,42 @@ function handleCollisionWithTeammate() {
 			
 			// Create fireworks every time a teammate is collected
 			createFireworks(teammateX, teammateY)
+			
+			// Explode all obstacles in red fireworks when last teammate is collected
+			if (wasLastTeammate) {
+				// Show "GOOD JOB" after tutorial text explodes (3 seconds total: 2s for tutorial + 1s delay)
+				goodJobTimeout = setTimeout(() => {
+					showGoodJob = true
+					goodJobTimeout = null
+				}, 3000)
+				
+				// Explode obstacles after 1 second
+				obstacleExplosionTimeout = setTimeout(() => {
+					for (let j = 0; j < obstacles.length; j++) {
+						let obstacle = obstacles[j]
+						createFireworks(obstacle.xPos, obstacle.yPos, "red")
+					}
+					// Remove all obstacles after exploding them
+					obstacles = []
+					obstacleExplosionTimeout = null
+				}, 1000)
+				
+				// Explode tutorial text after 2 seconds (1s + 1s)
+				tutorialExplosionTimeout = setTimeout(() => {
+					let tutorialOverlay = document.getElementById("tutorialOverlay")
+					if (tutorialOverlay && tutorialOverlay.style.visibility === "visible") {
+						// Get the tutorial text position
+						let tutorialX = parseFloat(tutorialOverlay.style.left) || canvas.width / 2
+						let tutorialY = parseFloat(tutorialOverlay.style.top) || canvas.height / 2
+						// Create white fireworks at tutorial position
+						createFireworks(tutorialX, tutorialY, "white")
+						// Hide and remove tutorial text
+						tutorialOverlay.style.display = "none"
+						tutorialOverlay.style.visibility = "hidden"
+					}
+					tutorialExplosionTimeout = null
+				}, 2000)
+			}
 		}
 	}
 }
@@ -614,6 +688,58 @@ function handleCollisionWithEdge() {
 	}
 }
 
+function handleCollisionWithGoodJob() {
+	if (!showGoodJob) return
+	
+	let ballRadius = getBallRadius()
+	let textHeight = 64 // Font size
+	let textY = canvas.height // Bottom aligned
+	
+	// Rectangle extends full width at bottom of screen
+	let rectLeft = 0
+	let rectRight = canvas.width
+	let rectTop = textY - textHeight
+	let rectBottom = textY
+	
+	// Check if ball overlaps with rectangle
+	let ballLeft = ball.xPos - ballRadius
+	let ballRight = ball.xPos + ballRadius
+	let ballTop = ball.yPos - ballRadius
+	let ballBottom = ball.yPos + ballRadius
+	
+	if (ballRight > rectLeft && ballLeft < rectRight && ballBottom > rectTop && ballTop < rectBottom) {
+		// Find closest point on rectangle to ball
+		let closestX = Math.max(rectLeft, Math.min(ball.xPos, rectRight))
+		let closestY = Math.max(rectTop, Math.min(ball.yPos, rectBottom))
+		
+		// Calculate normal vector from closest point to ball center
+		let dx = ball.xPos - closestX
+		let dy = ball.yPos - closestY
+		let distance = Math.hypot(dx, dy)
+		
+		// Only process if ball is actually touching the rectangle
+		if (distance > 0 && distance <= ballRadius) {
+			// Normalize direction
+			let normalX = dx / distance
+			let normalY = dy / distance
+			
+			// Reflect velocity off the rectangle surface
+			let dot = ball.xVel * normalX + ball.yVel * normalY
+			ball.xVel = ball.xVel - 2 * dot * normalX
+			ball.yVel = ball.yVel - 2 * dot * normalY
+			
+			// Push ball outside rectangle to prevent sticking
+			let pushDistance = ballRadius + 1
+			ball.xPos = closestX + normalX * pushDistance
+			ball.yPos = closestY + normalY * pushDistance
+			
+			// Clamp to keep ball in bounds
+			ball.xPos = Math.max(ballRadius, Math.min(canvas.width - ballRadius, ball.xPos))
+			ball.yPos = Math.max(ballRadius, Math.min(canvas.height - ballRadius, ball.yPos))
+		}
+	}
+}
+
 function draw() {
 	ctx.clearRect(0, 0, canvas.width, canvas.height)
 	drawBall()
@@ -622,12 +748,20 @@ function draw() {
 	drawWalls()
 	drawFireworks()
 	drawScore()
+	drawGoodJob()
 }
 
-function createFireworks(x, y) {
-	// Create liquid explosion effect with blue particles (matching teammate color)
+function createFireworks(x, y, color = "blue") {
+	// Create liquid explosion effect with particles
 	let particleCount = 12
-	let blueColor = "rgba(0, 0, 255, 1.0)" // Same blue as teammate sprite
+	let particleColor
+	if (color === "red") {
+		particleColor = "rgba(255, 0, 0, 1.0)"
+	} else if (color === "white") {
+		particleColor = "rgba(255, 255, 255, 1.0)"
+	} else {
+		particleColor = "rgba(0, 0, 255, 1.0)" // Blue
+	}
 	
 	for (let i = 0; i < particleCount; i++) {
 		let angle = (Math.PI * 2 * i) / particleCount + Math.random() * 0.7
@@ -639,7 +773,7 @@ function createFireworks(x, y) {
 			vy: Math.sin(angle) * speed,
 			life: 15 + Math.random() * 10, // Shorter lifetime
 			maxLife: 15 + Math.random() * 10,
-			color: blueColor,
+			color: particleColor,
 			size: 2 + Math.random() * 2 // Smaller particles
 		})
 	}
@@ -787,11 +921,45 @@ function drawScore() {
 	ctx.fillText(baseText, 12, 28)
 }
 
+function drawGoodJob() {
+	if (!showGoodJob) return
+	
+	// Color halfway between ball grey (#b0b0b0) and white (#ffffff)
+	// Average: (#b0b0b0 + #ffffff) / 2 = #d8d8d8
+	let textColor = "#d8d8d8"
+	
+	ctx.font = "bold 64px Arial"
+	let text = "GOOD JOB"
+	
+	// Center text horizontally, align with bottom of viewport
+	let textX = canvas.width / 2
+	let textY = canvas.height // Aligned with bottom
+	
+	// Draw text outline for better visibility
+	ctx.strokeStyle = "black"
+	ctx.lineWidth = 6
+	ctx.lineJoin = "round"
+	ctx.miterLimit = 2
+	
+	// Draw outline
+	ctx.strokeText(text, textX, textY)
+	
+	// Draw fill text
+	ctx.fillStyle = textColor
+	ctx.textAlign = "center"
+	ctx.textBaseline = "bottom"
+	ctx.fillText(text, textX, textY)
+	
+	// Reset text alignment
+	ctx.textAlign = "left"
+	ctx.textBaseline = "alphabetic"
+}
+
 function updateTutorial() {
 	let tutorialOverlay = document.getElementById("tutorialOverlay")
 	if (!tutorialOverlay || !canvas) return
 	
-	let padding = 40 // Minimum padding from edges (increased for safety)
+	let padding = 60 // Minimum padding from edges (increased to prevent cutoff)
 	let minDistanceFromSprite = 150 // Minimum distance from sprite edge (increased for safety)
 	
 	let textContent = ""
@@ -819,11 +987,12 @@ function updateTutorial() {
 	
 	// Measure actual text dimensions
 	// Add extra padding for text-shadow and visual safety margin
-	let textShadowBuffer = 12 // Increased buffer for safety
+	let textShadowBuffer = 20 // Increased buffer for safety (accounts for text-shadow)
 	let measuredWidth = tutorialOverlay.offsetWidth || 300
 	let measuredHeight = tutorialOverlay.offsetHeight || 30
-	let textWidth = measuredWidth + textShadowBuffer * 2
-	let textHeight = measuredHeight + textShadowBuffer * 2
+	// Add extra margin to account for text-shadow and ensure no cutoff
+	let textWidth = measuredWidth + textShadowBuffer * 2 + 20
+	let textHeight = measuredHeight + textShadowBuffer * 2 + 20
 	let textHalfWidth = textWidth / 2
 	let textHalfHeight = textHeight / 2
 	
@@ -1041,7 +1210,17 @@ function updateTutorial() {
 	}
 	
 	// Final REQUIRED checks: ensure text is never cut off and never in top 20% (after all repositioning)
-	// Check and fix edges
+	// Check and fix edges - account for transform: translate(-50%, -50%) centering
+	let minX = padding + textHalfWidth
+	let maxX = canvas.width - padding - textHalfWidth
+	let minY = Math.max(padding + textHalfHeight, topExclusionY + textHalfHeight)
+	let maxY = canvas.height - padding - textHalfHeight
+	
+	// Clamp position to ensure text is fully visible
+	xPos = Math.max(minX, Math.min(xPos, maxX))
+	yPos = Math.max(minY, Math.min(yPos, maxY))
+	
+	// Double-check bounds one more time to be absolutely sure
 	if (xPos - textHalfWidth < padding) {
 		xPos = padding + textHalfWidth
 	}
@@ -1057,6 +1236,14 @@ function updateTutorial() {
 	}
 	if (yPos + textHalfHeight > canvas.height - padding) {
 		yPos = canvas.height - padding - textHalfHeight
+	}
+	
+	// Final safety check: if text still won't fit, center it horizontally and place it safely vertically
+	if (textWidth > canvas.width - padding * 2) {
+		xPos = canvas.width / 2
+	}
+	if (textHeight > canvas.height - padding * 2 - topExclusionY) {
+		yPos = Math.max(topExclusionY + textHalfHeight + padding, canvas.height / 2)
 	}
 	
 	tutorialOverlay.style.left = xPos + "px"

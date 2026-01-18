@@ -41,11 +41,6 @@ body {
     0 2px 0 black;
 }
 
-#retryButton.pulsing {
-  animation: pulse 5s ease-in-out infinite;
-  animation-delay: 3.5s;
-}
-
 #nextButton {
   position: absolute;
   top: 4px;
@@ -66,23 +61,6 @@ body {
     2px 0 0 black,
     0 -2px 0 black,
     0 2px 0 black;
-}
-
-#nextButton.pulsing {
-  animation: pulse 5s ease-in-out infinite;
-  animation-delay: 1s;
-}
-
-@keyframes pulse {
-  0%, 50% {
-    transform: scale(1);
-  }
-  75% {
-    transform: scale(1.15);
-  }
-  100% {
-    transform: scale(1);
-  }
 }
 
 #tutorialOverlay {
