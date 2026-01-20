@@ -856,11 +856,44 @@ function placeDoor() {
 	let ballRadius = getBallRadius()
 	let minSeparation = 5
 	
+	// First, animate the grey ball to a random position at the bottom of the screen
+	// (same animation style as level start/restart)
+	// Add padding to avoid corners - keep ball away from left/right edges
+	let horizontalPadding = getShim() // Same padding as vertical
+	let ballTargetX = ballRadius + horizontalPadding + (canvas.width - 2 * ballRadius - 2 * horizontalPadding) * Math.random()
+	let ballTargetY = canvas.height - getShim()
+	
+	// Verify ball target yPos is within bounds
+	if (ballTargetY - ballRadius < 0) {
+		ballTargetY = ballRadius
+	}
+	if (ballTargetY + ballRadius > canvas.height) {
+		ballTargetY = canvas.height - ballRadius
+	}
+	
+	// Set up the spawn animation to move the ball to the bottom
+	ball.spawnFromX = ball.xPos
+	ball.spawnFromY = ball.yPos
+	ball.spawnToX = ballTargetX
+	ball.spawnToY = ballTargetY
+	ball.spawnStartTime = Date.now()
+	ball.isSpawningToStart = true
+	
+	// Start the ball visually at its current location, but stop its velocity
+	ball.xVel = 0
+	ball.yVel = 0
+	ball.isBeingFlung = false
+	
 	// Place the trophy at a random valid position on the board
+	// Ensure it's positioned well above the ball's new bottom position
 	let maxAttempts = 100
 	let attempts = 0
 	let xPos, yPos
 	let validPosition = false
+	
+	// Minimum vertical separation between trophy and ball's new bottom position
+	let minVerticalSeparation = 3 * (doorRadius + ballRadius)
+	let ballBottomY = ballTargetY + ballRadius
 	
 		while (!validPosition && attempts < maxAttempts) {
 			// Random position on canvas
@@ -873,14 +906,10 @@ function placeDoor() {
 				validPosition = false
 			}
 
-			// Also keep the trophy a bit away from the grey ball so it doesn't
-			// spawn right on top of it.
+			// Ensure the trophy is positioned well above the ball's new bottom position
 			if (validPosition) {
-				let dx = xPos - ball.xPos
-				let dy = yPos - ball.yPos
-				let distance = Math.hypot(dx, dy)
-				let minDistance = 2 * (doorRadius + ballRadius + minSeparation) // doubled minimum distance
-				if (distance < minDistance) {
+				let trophyTopY = yPos - doorRadius
+				if (trophyTopY > ballBottomY - minVerticalSeparation) {
 					validPosition = false
 				}
 			}
@@ -912,6 +941,10 @@ function placeDoor() {
 	if (!validPosition) {
 		xPos = canvas.width / 2
 		yPos = canvas.height / 2
+		// Still ensure it's above the ball's bottom position
+		if (yPos - doorRadius > ballBottomY - minVerticalSeparation) {
+			yPos = ballBottomY - minVerticalSeparation + doorRadius
+		}
 	}
 	
 	door = {
