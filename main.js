@@ -8,7 +8,7 @@ function getBallRadius() { return (canvas?.width || window.innerWidth) / 20 }
 function getTeammateRadius() { return (canvas?.width || window.innerWidth) / 20 }
 const FRICTION = .99
 const FLING_DIVISOR = 2
-const BALL_STOP_SPEED = 9// Higher threshold so we treat the ball as "stopped" sooner
+const BALL_STOP_SPEED = 10// Higher threshold so we treat the ball as "stopped" sooner
 const BALL_MIN_CONTINUE_SPEED = 3 // If above this and path will clear all teammates, don't auto-reset yet
 const AUTO_RESET_DURATION = 1000 // ms for ball move-back + teammate fade-in
 
@@ -851,7 +851,8 @@ function placeObstacleAtPosition(xPos, yPos) {
 }
 
 function placeDoor() {
-	let doorRadius = getTeammateRadius() * 2.5 // Make trophy bigger
+	// Make the trophy substantially larger than teammates.
+	let doorRadius = getTeammateRadius() * 4.5
 	let ballRadius = getBallRadius()
 	let minSeparation = 5
 	
@@ -861,31 +862,51 @@ function placeDoor() {
 	let xPos, yPos
 	let validPosition = false
 	
-	while (!validPosition && attempts < maxAttempts) {
-		// Random position on canvas
-		xPos = doorRadius + (canvas.width - 2 * doorRadius) * Math.random()
-		yPos = doorRadius + (canvas.height - 2 * doorRadius) * Math.random()
-		validPosition = true
-		
-		// Never place the trophy in the top-right quadrant of the board
-		if (xPos > canvas.width / 2 && yPos < canvas.height / 2) {
-			validPosition = false
-		}
-
-		// Also keep the trophy a bit away from the grey ball so it doesn't
-		// spawn right on top of it.
-		if (validPosition) {
-			let dx = xPos - ball.xPos
-			let dy = yPos - ball.yPos
-			let distance = Math.hypot(dx, dy)
-			let minDistance = 2 * (doorRadius + ballRadius + minSeparation) // doubled minimum distance
-			if (distance < minDistance) {
+		while (!validPosition && attempts < maxAttempts) {
+			// Random position on canvas
+			xPos = doorRadius + (canvas.width - 2 * doorRadius) * Math.random()
+			yPos = doorRadius + (canvas.height - 2 * doorRadius) * Math.random()
+			validPosition = true
+			
+			// Never place the trophy in the top-right quadrant of the board
+			if (xPos > canvas.width / 2 && yPos < canvas.height / 2) {
 				validPosition = false
 			}
+
+			// Also keep the trophy a bit away from the grey ball so it doesn't
+			// spawn right on top of it.
+			if (validPosition) {
+				let dx = xPos - ball.xPos
+				let dy = yPos - ball.yPos
+				let distance = Math.hypot(dx, dy)
+				let minDistance = 2 * (doorRadius + ballRadius + minSeparation) // doubled minimum distance
+				if (distance < minDistance) {
+					validPosition = false
+				}
+			}
+
+			// Keep the trophy away from the score in the top-right corner so it
+			// never visually overlaps or hides the score digits.
+			if (validPosition) {
+				let scoreDigitWidth = 60   // a bit wider than a single digit
+				let scoreDigitHeight = 80  // a bit taller for safety
+				let scoreRight = canvas.width - 12
+				let scoreLeft = scoreRight - scoreDigitWidth
+				let scoreBottom = 56
+				let scoreTop = scoreBottom - scoreDigitHeight
+
+				if (
+					xPos + doorRadius > scoreLeft &&
+					xPos - doorRadius < scoreRight &&
+					yPos + doorRadius > scoreTop &&
+					yPos - doorRadius < scoreBottom
+				) {
+					validPosition = false
+				}
+			}
+			
+			attempts++
 		}
-		
-		attempts++
-	}
 	
 	// Fallback: place at center if no valid position found
 	if (!validPosition) {
@@ -907,9 +928,8 @@ function placeDoor() {
 }
 
 function placeTeam() {
-	// Use fewer teammates on the very first level to ease players in.
-	// Level 1: 3 teammates, later levels: 5 teammates.
-	let teammateCount = (level === 1) ? 3 : 5
+	// Always use 5 teammates on every level (including level 1).
+	let teammateCount = 5
 	placeTeamWithCount(teammateCount)
 }
 
