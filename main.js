@@ -2747,23 +2747,22 @@ function drawSwitcher() {
 	ctx.arc(x, y, radius, 0, 2 * Math.PI)
 	ctx.fill()
 	
-	// Draw two thick, curved white arrows forming an almost complete circle
+	// Draw two thick, curved white arrows forming an almost complete circle with gaps
 	let circleRadius = radius * 0.5 // Radius of the circular path
 	let arrowThickness = radius * 0.25 // Thickness of arrow body (thick and bold)
 	let arrowHeadSize = radius * 0.3 // Size of arrowhead
-	let arrowArcLength = Math.PI * 0.85 // Length of arc each arrow covers (almost complete circle)
-	let gapSize = Math.PI * 0.15 // Small gap between arrows
+	let gapSize = Math.PI * 0.25 // Gap between arrows (larger gap for better visibility)
+	let arrowArcLength = (Math.PI * 2 - gapSize * 2) / 2 // Each arrow covers half the remaining circle
 	
 	// Top arrow: starts from left-middle, curves clockwise up and right, arrowhead points right
-	// Left-middle is at 180 degrees, curves clockwise ending around 0 degrees (pointing right)
-	let topArrowStartAngle = Math.PI // Start at left-middle (180 degrees)
-	let topArrowEndAngle = 0 // End pointing right (0 degrees) - wraps around clockwise
+	// Left-middle is at 180 degrees, curves clockwise ending before the gap
+	let topArrowStartAngle = Math.PI + gapSize / 2 // Start after gap at left-middle area
+	let topArrowEndAngle = Math.PI * 2 - gapSize / 2 // End before gap at right-middle area
 	
 	// Bottom arrow: starts from right-middle, curves clockwise down and left, arrowhead points left
-	// Right-middle is at 0 degrees, but we need a gap, so start after the top arrow ends
-	// Actually, bottom arrow starts at 0 and curves to 180 (pointing left)
-	let bottomArrowStartAngle = topArrowEndAngle + gapSize // Start after gap from top arrow end
-	let bottomArrowEndAngle = Math.PI // End pointing left (180 degrees)
+	// Right-middle area, curves clockwise ending before the gap at left-middle
+	let bottomArrowStartAngle = gapSize / 2 // Start after gap at right-middle area
+	let bottomArrowEndAngle = Math.PI - gapSize / 2 // End before gap at left-middle area
 	
 	ctx.strokeStyle = "#ffffff"
 	ctx.fillStyle = "#ffffff"
@@ -2843,77 +2842,23 @@ function drawSkull() {
 	ctx.save()
 	ctx.globalAlpha = opacity
 	
-	// Draw white skull (circle for head)
-	ctx.fillStyle = "#ffffff"
-	ctx.strokeStyle = "#000000"
-	ctx.lineWidth = 2
-	ctx.beginPath()
-	ctx.arc(x, y - radius * 0.1, radius * 0.6, 0, 2 * Math.PI)
-	ctx.fill()
-	ctx.stroke()
-	
-	// Draw eye sockets (two circles)
-	ctx.fillStyle = "#000000"
-	ctx.beginPath()
-	ctx.arc(x - radius * 0.2, y - radius * 0.15, radius * 0.12, 0, 2 * Math.PI)
-	ctx.fill()
-	ctx.beginPath()
-	ctx.arc(x + radius * 0.2, y - radius * 0.15, radius * 0.12, 0, 2 * Math.PI)
-	ctx.fill()
-	
-	// Draw nose (triangle)
-	ctx.beginPath()
-	ctx.moveTo(x, y - radius * 0.05)
-	ctx.lineTo(x - radius * 0.08, y + radius * 0.05)
-	ctx.lineTo(x + radius * 0.08, y + radius * 0.05)
-	ctx.closePath()
-	ctx.fill()
-	
-	// Draw jaw (bottom part of skull)
-	ctx.beginPath()
-	ctx.arc(x, y + radius * 0.2, radius * 0.4, 0, Math.PI)
-	ctx.fill()
-	ctx.stroke()
-	
-	// Draw crossbones (two bones forming an X)
+	// Draw white X
 	ctx.strokeStyle = "#ffffff"
 	ctx.fillStyle = "#ffffff"
-	ctx.lineWidth = radius * 0.15
+	ctx.lineWidth = radius * 0.25
 	ctx.lineCap = "round"
 	
-	// First bone (top-left to bottom-right)
-	ctx.save()
-	ctx.translate(x, y)
-	ctx.rotate(Math.PI / 4)
+	// First diagonal line (top-left to bottom-right)
 	ctx.beginPath()
-	ctx.moveTo(-radius * 0.5, 0)
-	ctx.lineTo(radius * 0.5, 0)
+	ctx.moveTo(x - radius * 0.5, y - radius * 0.5)
+	ctx.lineTo(x + radius * 0.5, y + radius * 0.5)
 	ctx.stroke()
-	// Bone ends (small circles)
-	ctx.beginPath()
-	ctx.arc(-radius * 0.5, 0, radius * 0.08, 0, 2 * Math.PI)
-	ctx.fill()
-	ctx.beginPath()
-	ctx.arc(radius * 0.5, 0, radius * 0.08, 0, 2 * Math.PI)
-	ctx.fill()
-	ctx.restore()
 	
-	// Second bone (top-right to bottom-left)
-	ctx.save()
-	ctx.translate(x, y)
-	ctx.rotate(-Math.PI / 4)
+	// Second diagonal line (top-right to bottom-left)
 	ctx.beginPath()
-	ctx.moveTo(-radius * 0.5, 0)
-	ctx.lineTo(radius * 0.5, 0)
+	ctx.moveTo(x + radius * 0.5, y - radius * 0.5)
+	ctx.lineTo(x - radius * 0.5, y + radius * 0.5)
 	ctx.stroke()
-	// Bone ends (small circles)
-	ctx.beginPath()
-	ctx.arc(-radius * 0.5, 0, radius * 0.08, 0, 2 * Math.PI)
-	ctx.fill()
-	ctx.beginPath()
-	ctx.arc(radius * 0.5, 0, radius * 0.08, 0, 2 * Math.PI)
-	ctx.fill()
-	ctx.restore()
 	
 	ctx.restore()
 }
