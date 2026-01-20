@@ -529,6 +529,12 @@ function handleTouchstart(e) {
 	// Check if tapping on the ball (check after teammates/obstacles to avoid blocking them)
 	let ballDistance = Math.hypot(touch1.xPos - ball.xPos, touch1.yPos - ball.yPos)
 	if (ballDistance < ballRadius + 20) {
+		// If the ball is still moving fast enough, ignore this tap so you can't "double-fling".
+		let currentSpeed = Math.hypot(ball.xVel, ball.yVel)
+		if (currentSpeed > BALL_STOP_SPEED) {
+			return
+		}
+
 		selectedForConversion = null // Clear selection if touching ball
 		ball.isBeingFlung = true
 		// Start a new "shot" – we care whether this single fling clears all teammates.
@@ -901,18 +907,16 @@ function placeDoor() {
 }
 
 function placeTeam() {
-	// Progressively increase teammate count: level 1 has 1, increases by 1 per level
-	// Temporarily disabled - always use 5 teammates
-	// let teammateCount = level
-	let teammateCount = 5
+	// Use fewer teammates on the very first level to ease players in.
+	// Level 1: 3 teammates, later levels: 5 teammates.
+	let teammateCount = (level === 1) ? 3 : 5
 	placeTeamWithCount(teammateCount)
 }
 
 function placeObstacles() {
-	// Progressively increase obstacle count: level 1 has 1, increases by 1 per level
-	// Temporarily disabled - always use 5 obstacles
-	// let obstacleCount = level
-	let obstacleCount = 5
+	// Use fewer obstacles on the very first level to ease players in.
+	// Level 1: 3 obstacles, later levels: 5 obstacles.
+	let obstacleCount = (level === 1) ? 3 : 5
 	placeObstaclesWithCount(obstacleCount)
 }
 
