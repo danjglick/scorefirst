@@ -32,17 +32,30 @@ let ball = {
 let targets = []
 let targetsRemaining = []
 let obstacles = []
-let star = null // White star that removes obstacles when hit (levels > 4, 20% chance)
-let switcher = null // White loop symbol that switches all red and blue balls when hit (levels > 4, 20% chance)
-let skull = null // White skull and crossbones that doubles obstacles when hit (levels > 4, 20% chance)
-let skullHitThisTry = false // Track if skull has been hit this try (idempotent)
+let star = null // White star that removes obstacles when hit (spawns starting level 5, cycles through items)
+let switcher = null // White loop symbol that switches all red and blue balls when hit (spawns starting level 5, cycles through items)
+let cross = null // White cross/X mark that doubles obstacles when hit (spawns starting level 5, cycles through items)
+let lightning = null // Orange lightning bolt that gives pass-through (spawns starting level 5, cycles through items)
+let bush = null // Green bush that slows ball and gives green border (spawns starting level 5, cycles through items)
+let magnet = null // Purple magnet that causes targets to drift towards ball when close (spawns starting level 5, cycles through items)
+let crossHitThisTry = false // Track if cross has been hit this try (idempotent)
+let availableSpecialItems = ['star', 'switcher', 'cross', 'lightning', 'bush', 'magnet'] // Track which special items haven't been shown yet in current cycle
+let currentLevelSpecialItem = null // Track which special item type was selected for the current level
+let currentLevelSpecialItems = [] // Track which special items were selected for current level (for when 2 items spawn)
+let lightningEffectActive = false // Track if lightning effect is currently active (lasts for rest of try)
+let bushEffectActive = false // Track if bush effect is currently active (lasts for rest of try)
+let magnetEffectActive = false // Track if magnet effect is currently active (purple border, lasts for rest of try)
+let ballStoppedByBushEffect = false // Track if ball was stopped by bush effect (prevents auto-reset until user flings again)
 let trophy = null // Trophy that appears after collecting all targets
 let savedTargets = [] // Saved positions for retry
 let savedObstacles = [] // Saved positions for retry
 let savedBall = null // Saved ball position for retry
 let savedStar = null // Saved star position for retry
 let savedSwitcher = null // Saved switcher position for retry
-let savedSkull = null // Saved skull position for retry
+let savedCross = null // Saved cross position for retry
+let savedLightning = null // Saved lightning position for retry
+let savedBush = null // Saved bush position for retry
+let savedMagnet = null // Saved magnet position for retry
 let isConvertingObstacle = false
 let selectedForConversion = null // { type: 'obstacle' | 'target' | 'star', index: number }
 let touch1 = {
@@ -142,23 +155,127 @@ function generateLevel(isRetry = false, fewerSprites = false) {
 			placeObstacles()
 		}
 		placeBall()
-		// Reset star before potentially placing a new one
+		// Reset all special items before potentially placing a new one
 		star = null
-		// Spawn star on level 5 and above with 20% chance
-		if (level >= 5 && Math.random() < 0.2) {
-			placeStar()
-		}
-		// Reset switcher before potentially placing a new one
 		switcher = null
-		// Spawn switcher on level 5 and above with 20% chance
-		if (level >= 5 && Math.random() < 0.2) {
-			placeSwitcher()
-		}
-		// Reset skull before potentially placing a new one
-		skull = null
-		// Spawn skull on level 5 and above with 20% chance
-		if (level >= 5 && Math.random() < 0.2) {
-			placeSkull()
+		cross = null
+		lightning = null
+		bush = null
+		magnet = null
+		// Reset lightning, bush, and cannon effects
+		lightningEffectActive = false
+		bushEffectActive = false
+		magnetEffectActive = false
+		ballStoppedByBushEffect = false
+		// Spawn special items per level starting at level 5
+		// First cycle: one item per level, randomly cycling through all items
+		// After all items shown once: two items per level
+		if (level >= 5) {
+			// For new levels, reset the current level's special item types
+			if (!fewerSprites) {
+				currentLevelSpecialItem = null
+				currentLevelSpecialItems = []
+			}
+			// If we have saved items for this level, use them (for retries with fewerSprites)
+			if (currentLevelSpecialItems.length > 0) {
+				// Place all saved items for this level
+				for (let item of currentLevelSpecialItems) {
+					if (item === 'star') {
+						placeStar()
+					} else if (item === 'switcher') {
+						placeSwitcher()
+					} else if (item === 'cross') {
+						placeCross()
+					} else if (item === 'lightning') {
+						placeLightning()
+					} else if (item === 'bush') {
+						placeBush()
+					} else if (item === 'magnet') {
+						placeMagnet()
+					}
+				}
+			} else if (currentLevelSpecialItem) {
+				// Legacy single item support
+				if (currentLevelSpecialItem === 'star') {
+					placeStar()
+				} else if (currentLevelSpecialItem === 'switcher') {
+					placeSwitcher()
+				} else if (currentLevelSpecialItem === 'cross') {
+					placeCross()
+				} else if (currentLevelSpecialItem === 'lightning') {
+					placeLightning()
+				} else if (currentLevelSpecialItem === 'bush') {
+					placeBush()
+				} else if (currentLevelSpecialItem === 'magnet') {
+					placeMagnet()
+				}
+			} else {
+				// New level - check if all items have been shown once
+				if (availableSpecialItems.length === 0) {
+					// All items shown once - spawn items based on level
+					const allItems = ['star', 'switcher', 'cross', 'lightning', 'bush', 'magnet']
+					const selectedItems = []
+					
+					// Determine number of items to spawn based on level
+					let itemsToSpawn = 3 // Levels 21-30
+					if (level >= 31 && level <= 40) {
+						itemsToSpawn = 4
+					} else if (level >= 41 && level <= 50) {
+						itemsToSpawn = 5
+					} else if (level > 50) {
+						itemsToSpawn = 6
+					}
+					
+					// Select random items (up to the number available)
+					let itemsToSelect = Math.min(itemsToSpawn, allItems.length)
+					for (let i = 0; i < itemsToSelect; i++) {
+						const randomIndex = Math.floor(Math.random() * allItems.length)
+						const selectedItem = allItems[randomIndex]
+						selectedItems.push(selectedItem)
+						allItems.splice(randomIndex, 1)
+					}
+					
+					currentLevelSpecialItems = selectedItems
+					
+					// Place the selected items
+					for (let item of selectedItems) {
+						if (item === 'star') {
+							placeStar()
+						} else if (item === 'switcher') {
+							placeSwitcher()
+						} else if (item === 'cross') {
+							placeCross()
+						} else if (item === 'lightning') {
+							placeLightning()
+						} else if (item === 'bush') {
+							placeBush()
+						} else if (item === 'magnet') {
+							placeMagnet()
+						}
+					}
+				} else {
+					// Still in first cycle - spawn one item
+					const randomIndex = Math.floor(Math.random() * availableSpecialItems.length)
+					const selectedItem = availableSpecialItems[randomIndex]
+					availableSpecialItems.splice(randomIndex, 1)
+					currentLevelSpecialItem = selectedItem
+					
+					// Place the selected item
+					if (selectedItem === 'star') {
+						placeStar()
+					} else if (selectedItem === 'switcher') {
+						placeSwitcher()
+					} else if (selectedItem === 'cross') {
+						placeCross()
+					} else if (selectedItem === 'lightning') {
+						placeLightning()
+					} else if (selectedItem === 'bush') {
+						placeBush()
+					} else if (selectedItem === 'magnet') {
+						placeMagnet()
+					}
+				}
+			}
 		}
 		// Save positions after placing (for future retries)
 		// Clear fade-in state from saved obstacles to prevent flashing on restore
@@ -172,7 +289,10 @@ function generateLevel(isRetry = false, fewerSprites = false) {
 		savedBall = JSON.parse(JSON.stringify(ball))
 		savedStar = star ? JSON.parse(JSON.stringify(star)) : null
 		savedSwitcher = switcher ? JSON.parse(JSON.stringify(switcher)) : null
-		savedSkull = skull ? JSON.parse(JSON.stringify(skull)) : null
+		savedCross = cross ? JSON.parse(JSON.stringify(cross)) : null
+		savedLightning = lightning ? JSON.parse(JSON.stringify(lightning)) : null
+		savedBush = bush ? JSON.parse(JSON.stringify(bush)) : null
+		savedMagnet = magnet ? JSON.parse(JSON.stringify(magnet)) : null
 	} else {
 		// Normal retry - restore obstacles and targets for current level
 		// Level stays the same, so tutorial stays the same
@@ -190,28 +310,86 @@ function generateLevel(isRetry = false, fewerSprites = false) {
 				obstacles[i].fadeInOpacity = 0
 				obstacles[i].fadeInStartTime = Date.now()
 			}
+			// Restore special items and track the type
+			star = savedStar ? JSON.parse(JSON.stringify(savedStar)) : null
+			switcher = savedSwitcher ? JSON.parse(JSON.stringify(savedSwitcher)) : null
+			cross = savedCross ? JSON.parse(JSON.stringify(savedCross)) : null
+			// Update currentLevelSpecialItem and currentLevelSpecialItems based on what was restored
+			currentLevelSpecialItems = []
+			if (star) {
+				currentLevelSpecialItem = 'star'
+				currentLevelSpecialItems.push('star')
+			}
+			if (switcher) {
+				if (!currentLevelSpecialItem) currentLevelSpecialItem = 'switcher'
+				currentLevelSpecialItems.push('switcher')
+			}
+			if (cross) {
+				if (!currentLevelSpecialItem) currentLevelSpecialItem = 'cross'
+				currentLevelSpecialItems.push('cross')
+			}
+			if (lightning) {
+				if (!currentLevelSpecialItem) currentLevelSpecialItem = 'lightning'
+				currentLevelSpecialItems.push('lightning')
+			}
+			if (bush) {
+				if (!currentLevelSpecialItem) currentLevelSpecialItem = 'bush'
+				currentLevelSpecialItems.push('bush')
+			}
+			if (magnet) {
+				if (!currentLevelSpecialItem) currentLevelSpecialItem = 'magnet'
+				currentLevelSpecialItems.push('magnet')
+			}
+			// Reset lightning, bush, and cannon effects
+			lightningEffectActive = false
+			bushEffectActive = false
+			magnetEffectActive = false
+			ballStoppedByBushEffect = false
 		} else {
 			// Generate new positions (first retry or no saved positions)
 			placeTargets()
 			placeObstacles()
 			placeBall()
-			// Reset star before potentially placing a new one
+			// Reset all special items before potentially placing a new one
 			star = null
-			// Spawn star on level 5 and above with 20% chance
-			if (level >= 5 && Math.random() < 0.2) {
-				placeStar()
-			}
-			// Reset switcher before potentially placing a new one
 			switcher = null
-			// Spawn switcher on level 5 and above with 20% chance
-			if (level >= 5 && Math.random() < 0.2) {
-				placeSwitcher()
-			}
-			// Reset skull before potentially placing a new one
-			skull = null
-			// Spawn skull on level 5 and above with 20% chance
-			if (level >= 5 && Math.random() < 0.2) {
-				placeSkull()
+			cross = null
+			lightning = null
+			bush = null
+			magnet = null
+			// Reset lightning, bush, and cannon effects
+			lightningEffectActive = false
+			bushEffectActive = false
+			magnetEffectActive = false
+			ballStoppedByBushEffect = false
+			// Spawn special items per level starting at level 5
+			// For retries, use the same item types that were selected for this level
+			if (level >= 5) {
+				// Use the current level's special items (determined on first attempt)
+				if (currentLevelSpecialItems.length > 0) {
+					for (let item of currentLevelSpecialItems) {
+						if (item === 'star') {
+							placeStar()
+						} else if (item === 'switcher') {
+							placeSwitcher()
+						} else if (item === 'cross') {
+							placeCross()
+						} else if (item === 'lightning') {
+							placeLightning()
+						}
+					}
+				} else if (currentLevelSpecialItem) {
+					// Legacy single item support
+					if (currentLevelSpecialItem === 'star') {
+						placeStar()
+					} else if (currentLevelSpecialItem === 'switcher') {
+						placeSwitcher()
+					} else if (currentLevelSpecialItem === 'cross') {
+						placeCross()
+					} else if (currentLevelSpecialItem === 'lightning') {
+						placeLightning()
+					}
+				}
 			}
 			// Save positions for future retries
 			// Clear fade-in state from saved obstacles to prevent flashing on restore
@@ -225,7 +403,8 @@ function generateLevel(isRetry = false, fewerSprites = false) {
 			savedBall = JSON.parse(JSON.stringify(ball))
 			savedStar = star ? JSON.parse(JSON.stringify(star)) : null
 			savedSwitcher = switcher ? JSON.parse(JSON.stringify(switcher)) : null
-			savedSkull = skull ? JSON.parse(JSON.stringify(skull)) : null
+			savedCross = cross ? JSON.parse(JSON.stringify(cross)) : null
+			savedLightning = lightning ? JSON.parse(JSON.stringify(lightning)) : null
 		}
 	}
 	targetsRemaining = JSON.parse(JSON.stringify(targets))
@@ -277,7 +456,7 @@ function generateLevel(isRetry = false, fewerSprites = false) {
 	levelScore = 0
 	pointsThisLevel = 0 // Reset points gained this level
 	tries = 0
-	skullHitThisTry = false // Reset skull hit flag for new try
+	crossHitThisTry = false // Reset cross hit flag for new try
 	// Initialize or clear tutorial for this level
 	if (level === 1 && !tutorialCompleted) {
 		// Level 1: full multi-step tutorial (fling, hit, switch)
@@ -316,10 +495,10 @@ function generateLevel(isRetry = false, fewerSprites = false) {
 		switcher.fadeInOpacity = 0
 		switcher.fadeInStartTime = fadeInStartTime
 	}
-	// Ensure skull has fade-in initialized
-	if (skull) {
-		skull.fadeInOpacity = 0
-		skull.fadeInStartTime = fadeInStartTime
+	// Ensure cross has fade-in initialized
+	if (cross) {
+		cross.fadeInOpacity = 0
+		cross.fadeInStartTime = fadeInStartTime
 	}
 	draw()
 	// Small delay to prevent zoom issues during level reload, then resume
@@ -443,11 +622,11 @@ function swapStarAndObstacle(obstacleIndex) {
 	selectedForConversion = null
 }
 
-function swapSkullAndTarget(targetIndex) {
-	if (!skull) return
+function swapCrossAndTarget(targetIndex) {
+	if (!cross) return
 	
-	let skullX = skull.xPos
-	let skullY = skull.yPos
+	let crossX = cross.xPos
+	let crossY = cross.yPos
 	let target = targetsRemaining[targetIndex]
 	let targetX = target.xPos
 	let targetY = target.yPos
@@ -470,67 +649,67 @@ function swapSkullAndTarget(targetIndex) {
 	}
 	
 	// Swap positions
-	skull.xPos = targetX
-	skull.yPos = targetY
-	target.xPos = skullX
-	target.yPos = skullY
+	cross.xPos = targetX
+	cross.yPos = targetY
+	target.xPos = crossX
+	target.yPos = crossY
 	if (targetInTargets) {
-		targetInTargets.xPos = skullX
-		targetInTargets.yPos = skullY
+		targetInTargets.xPos = crossX
+		targetInTargets.yPos = crossY
 	}
 	
 	// Ensure items are instantly visible
-	skull.fadeInOpacity = 1.0
-	skull.fadeInStartTime = Date.now()
+	cross.fadeInOpacity = 1.0
+	cross.fadeInStartTime = Date.now()
 	target.fadeInOpacity = 1.0
 	target.fadeInStartTime = Date.now()
 	
 	selectedForConversion = null
 }
 
-function swapSkullAndObstacle(obstacleIndex) {
-	if (!skull) return
+function swapCrossAndObstacle(obstacleIndex) {
+	if (!cross) return
 	
-	let skullX = skull.xPos
-	let skullY = skull.yPos
+	let crossX = cross.xPos
+	let crossY = cross.yPos
 	let obstacle = obstacles[obstacleIndex]
 	let obstacleX = obstacle.xPos
 	let obstacleY = obstacle.yPos
 	
 	// Swap positions
-	skull.xPos = obstacleX
-	skull.yPos = obstacleY
-	obstacle.xPos = skullX
-	obstacle.yPos = skullY
+	cross.xPos = obstacleX
+	cross.yPos = obstacleY
+	obstacle.xPos = crossX
+	obstacle.yPos = crossY
 	
 	// Ensure items are instantly visible
-	skull.fadeInOpacity = 1.0
-	skull.fadeInStartTime = Date.now()
+	cross.fadeInOpacity = 1.0
+	cross.fadeInStartTime = Date.now()
 	obstacle.fadeInOpacity = 1.0
 	obstacle.fadeInStartTime = Date.now()
 	
 	selectedForConversion = null
 }
 
-function swapStarAndSkull() {
-	if (!star || !skull) return
+function swapStarAndCross() {
+	if (!star || !cross) return
 	
 	let starX = star.xPos
 	let starY = star.yPos
-	let skullX = skull.xPos
-	let skullY = skull.yPos
+	let crossX = cross.xPos
+	let crossY = cross.yPos
 	
 	// Swap positions
-	star.xPos = skullX
-	star.yPos = skullY
-	skull.xPos = starX
-	skull.yPos = starY
+	star.xPos = crossX
+	star.yPos = crossY
+	cross.xPos = starX
+	cross.yPos = starY
 	
 	// Ensure items are instantly visible
 	star.fadeInOpacity = 1.0
 	star.fadeInStartTime = Date.now()
-	skull.fadeInOpacity = 1.0
-	skull.fadeInStartTime = Date.now()
+	cross.fadeInOpacity = 1.0
+	cross.fadeInStartTime = Date.now()
 	
 	selectedForConversion = null
 }
@@ -558,23 +737,23 @@ function swapStarAndSwitcher() {
 	selectedForConversion = null
 }
 
-function swapSkullAndSwitcher() {
-	if (!skull || !switcher) return
+function swapCrossAndSwitcher() {
+	if (!cross || !switcher) return
 	
-	let skullX = skull.xPos
-	let skullY = skull.yPos
+	let crossX = cross.xPos
+	let crossY = cross.yPos
 	let switcherX = switcher.xPos
 	let switcherY = switcher.yPos
 	
 	// Swap positions
-	skull.xPos = switcherX
-	skull.yPos = switcherY
-	switcher.xPos = skullX
-	switcher.yPos = skullY
+	cross.xPos = switcherX
+	cross.yPos = switcherY
+	switcher.xPos = crossX
+	switcher.yPos = crossY
 	
 	// Ensure items are instantly visible
-	skull.fadeInOpacity = 1.0
-	skull.fadeInStartTime = Date.now()
+	cross.fadeInOpacity = 1.0
+	cross.fadeInStartTime = Date.now()
 	switcher.fadeInOpacity = 1.0
 	switcher.fadeInStartTime = Date.now()
 	
@@ -773,28 +952,581 @@ function swapBallAndSwitcher() {
 	selectedForConversion = null
 }
 
-function swapBallAndSkull() {
-	if (!skull) return
+function swapBallAndCross() {
+	if (!cross) return
 	
 	let ballX = ball.xPos
 	let ballY = ball.yPos
-	let skullX = skull.xPos
-	let skullY = skull.yPos
+	let crossX = cross.xPos
+	let crossY = cross.yPos
 	
 	// Swap positions
-	ball.xPos = skullX
-	ball.yPos = skullY
-	skull.xPos = ballX
-	skull.yPos = ballY
+	ball.xPos = crossX
+	ball.yPos = crossY
+	cross.xPos = ballX
+	cross.yPos = ballY
 	
-	// Ensure skull is instantly visible
-	skull.fadeInOpacity = 1.0
-	skull.fadeInStartTime = Date.now()
+	// Ensure cross is instantly visible
+	cross.fadeInOpacity = 1.0
+	cross.fadeInStartTime = Date.now()
 	
 	// Reset ball velocity when swapping
 	ball.xVel = 0
 	ball.yVel = 0
 	ball.isBeingFlung = false
+	
+	selectedForConversion = null
+}
+
+function swapBallAndLightning() {
+	if (!lightning) return
+	
+	let ballX = ball.xPos
+	let ballY = ball.yPos
+	let lightningX = lightning.xPos
+	let lightningY = lightning.yPos
+	
+	// Swap positions
+	ball.xPos = lightningX
+	ball.yPos = lightningY
+	lightning.xPos = ballX
+	lightning.yPos = ballY
+	
+	// Ensure lightning is instantly visible
+	lightning.fadeInOpacity = 1.0
+	lightning.fadeInStartTime = Date.now()
+	
+	// Reset ball velocity when swapping
+	ball.xVel = 0
+	ball.yVel = 0
+	ball.isBeingFlung = false
+	
+	selectedForConversion = null
+}
+
+function swapLightningAndTarget(targetIndex) {
+	if (!lightning) return
+	
+	let lightningX = lightning.xPos
+	let lightningY = lightning.yPos
+	let target = targetsRemaining[targetIndex]
+	let targetX = target.xPos
+	let targetY = target.yPos
+	
+	// Find corresponding target in targets array - try to match by finding the target
+	// that was at this position before any swaps occurred
+	let targetInTargets = null
+	// First, try to find by exact position match among remaining targets
+	for (let i = 0; i < targets.length; i++) {
+		let t = targets[i]
+		// Check if this target is still in targetsRemaining (not collected)
+		let stillRemaining = targetsRemaining.some(tr => 
+			Math.abs(tr.xPos - t.xPos) < 0.5 && Math.abs(tr.yPos - t.yPos) < 0.5
+		)
+		// If this target matches the one we're swapping with and is still remaining
+		if (stillRemaining && Math.abs(t.xPos - targetX) < 0.5 && Math.abs(t.yPos - targetY) < 0.5) {
+			targetInTargets = t
+			break
+		}
+	}
+	
+	// Swap positions
+	lightning.xPos = targetX
+	lightning.yPos = targetY
+	target.xPos = lightningX
+	target.yPos = lightningY
+	if (targetInTargets) {
+		targetInTargets.xPos = lightningX
+		targetInTargets.yPos = lightningY
+	}
+	
+	// Ensure items are instantly visible
+	lightning.fadeInOpacity = 1.0
+	lightning.fadeInStartTime = Date.now()
+	target.fadeInOpacity = 1.0
+	target.fadeInStartTime = Date.now()
+	
+	selectedForConversion = null
+}
+
+function swapLightningAndObstacle(obstacleIndex) {
+	if (!lightning) return
+	
+	let lightningX = lightning.xPos
+	let lightningY = lightning.yPos
+	let obstacle = obstacles[obstacleIndex]
+	let obstacleX = obstacle.xPos
+	let obstacleY = obstacle.yPos
+	
+	// Swap positions
+	lightning.xPos = obstacleX
+	lightning.yPos = obstacleY
+	obstacle.xPos = lightningX
+	obstacle.yPos = lightningY
+	
+	// Ensure items are instantly visible
+	lightning.fadeInOpacity = 1.0
+	lightning.fadeInStartTime = Date.now()
+	obstacle.fadeInOpacity = 1.0
+	obstacle.fadeInStartTime = Date.now()
+	
+	selectedForConversion = null
+}
+
+function swapLightningAndStar() {
+	if (!lightning || !star) return
+	
+	let lightningX = lightning.xPos
+	let lightningY = lightning.yPos
+	let starX = star.xPos
+	let starY = star.yPos
+	
+	// Swap positions
+	lightning.xPos = starX
+	lightning.yPos = starY
+	star.xPos = lightningX
+	star.yPos = lightningY
+	
+	// Ensure items are instantly visible
+	lightning.fadeInOpacity = 1.0
+	lightning.fadeInStartTime = Date.now()
+	star.fadeInOpacity = 1.0
+	star.fadeInStartTime = Date.now()
+	
+	selectedForConversion = null
+}
+
+function swapLightningAndSwitcher() {
+	if (!lightning || !switcher) return
+	
+	let lightningX = lightning.xPos
+	let lightningY = lightning.yPos
+	let switcherX = switcher.xPos
+	let switcherY = switcher.yPos
+	
+	// Swap positions
+	lightning.xPos = switcherX
+	lightning.yPos = switcherY
+	switcher.xPos = lightningX
+	switcher.yPos = lightningY
+	
+	// Ensure items are instantly visible
+	lightning.fadeInOpacity = 1.0
+	lightning.fadeInStartTime = Date.now()
+	switcher.fadeInOpacity = 1.0
+	switcher.fadeInStartTime = Date.now()
+	
+	selectedForConversion = null
+}
+
+function swapLightningAndCross() {
+	if (!lightning || !cross) return
+	
+	let lightningX = lightning.xPos
+	let lightningY = lightning.yPos
+	let crossX = cross.xPos
+	let crossY = cross.yPos
+	
+	// Swap positions
+	lightning.xPos = crossX
+	lightning.yPos = crossY
+	cross.xPos = lightningX
+	cross.yPos = lightningY
+	
+	// Ensure items are instantly visible
+	lightning.fadeInOpacity = 1.0
+	lightning.fadeInStartTime = Date.now()
+	cross.fadeInOpacity = 1.0
+	cross.fadeInStartTime = Date.now()
+	
+	selectedForConversion = null
+}
+
+function swapBallAndBush() {
+	if (!bush) return
+	
+	let ballX = ball.xPos
+	let ballY = ball.yPos
+	let bushX = bush.xPos
+	let bushY = bush.yPos
+	
+	// Swap positions
+	ball.xPos = bushX
+	ball.yPos = bushY
+	bush.xPos = ballX
+	bush.yPos = ballY
+	
+	// Ensure bush is instantly visible
+	bush.fadeInOpacity = 1.0
+	bush.fadeInStartTime = Date.now()
+	
+	// Reset ball velocity when swapping
+	ball.xVel = 0
+	ball.yVel = 0
+	ball.isBeingFlung = false
+	
+	selectedForConversion = null
+}
+
+function swapBushAndTarget(targetIndex) {
+	if (!bush) return
+	
+	let bushX = bush.xPos
+	let bushY = bush.yPos
+	let target = targetsRemaining[targetIndex]
+	let targetX = target.xPos
+	let targetY = target.yPos
+	
+	// Find corresponding target in targets array
+	let targetInTargets = null
+	for (let i = 0; i < targets.length; i++) {
+		let t = targets[i]
+		let stillRemaining = targetsRemaining.some(tr => 
+			Math.abs(tr.xPos - t.xPos) < 0.5 && Math.abs(tr.yPos - t.yPos) < 0.5
+		)
+		if (stillRemaining && Math.abs(t.xPos - targetX) < 0.5 && Math.abs(t.yPos - targetY) < 0.5) {
+			targetInTargets = t
+			break
+		}
+	}
+	
+	// Swap positions
+	bush.xPos = targetX
+	bush.yPos = targetY
+	target.xPos = bushX
+	target.yPos = bushY
+	if (targetInTargets) {
+		targetInTargets.xPos = bushX
+		targetInTargets.yPos = bushY
+	}
+	
+	// Ensure items are instantly visible
+	bush.fadeInOpacity = 1.0
+	bush.fadeInStartTime = Date.now()
+	target.fadeInOpacity = 1.0
+	target.fadeInStartTime = Date.now()
+	
+	selectedForConversion = null
+}
+
+function swapBushAndObstacle(obstacleIndex) {
+	if (!bush) return
+	
+	let bushX = bush.xPos
+	let bushY = bush.yPos
+	let obstacle = obstacles[obstacleIndex]
+	let obstacleX = obstacle.xPos
+	let obstacleY = obstacle.yPos
+	
+	// Swap positions
+	bush.xPos = obstacleX
+	bush.yPos = obstacleY
+	obstacle.xPos = bushX
+	obstacle.yPos = bushY
+	
+	// Ensure items are instantly visible
+	bush.fadeInOpacity = 1.0
+	bush.fadeInStartTime = Date.now()
+	obstacle.fadeInOpacity = 1.0
+	obstacle.fadeInStartTime = Date.now()
+	
+	selectedForConversion = null
+}
+
+function swapBushAndStar() {
+	if (!bush || !star) return
+	
+	let bushX = bush.xPos
+	let bushY = bush.yPos
+	let starX = star.xPos
+	let starY = star.yPos
+	
+	// Swap positions
+	bush.xPos = starX
+	bush.yPos = starY
+	star.xPos = bushX
+	star.yPos = bushY
+	
+	// Ensure items are instantly visible
+	bush.fadeInOpacity = 1.0
+	bush.fadeInStartTime = Date.now()
+	star.fadeInOpacity = 1.0
+	star.fadeInStartTime = Date.now()
+	
+	selectedForConversion = null
+}
+
+function swapBushAndSwitcher() {
+	if (!bush || !switcher) return
+	
+	let bushX = bush.xPos
+	let bushY = bush.yPos
+	let switcherX = switcher.xPos
+	let switcherY = switcher.yPos
+	
+	// Swap positions
+	bush.xPos = switcherX
+	bush.yPos = switcherY
+	switcher.xPos = bushX
+	switcher.yPos = bushY
+	
+	// Ensure items are instantly visible
+	bush.fadeInOpacity = 1.0
+	bush.fadeInStartTime = Date.now()
+	switcher.fadeInOpacity = 1.0
+	switcher.fadeInStartTime = Date.now()
+	
+	selectedForConversion = null
+}
+
+function swapBushAndCross() {
+	if (!bush || !cross) return
+	
+	let bushX = bush.xPos
+	let bushY = bush.yPos
+	let crossX = cross.xPos
+	let crossY = cross.yPos
+	
+	// Swap positions
+	bush.xPos = crossX
+	bush.yPos = crossY
+	cross.xPos = bushX
+	cross.yPos = bushY
+	
+	// Ensure items are instantly visible
+	bush.fadeInOpacity = 1.0
+	bush.fadeInStartTime = Date.now()
+	cross.fadeInOpacity = 1.0
+	cross.fadeInStartTime = Date.now()
+	
+	selectedForConversion = null
+}
+
+function swapBushAndLightning() {
+	if (!bush || !lightning) return
+	
+	let bushX = bush.xPos
+	let bushY = bush.yPos
+	let lightningX = lightning.xPos
+	let lightningY = lightning.yPos
+	
+	// Swap positions
+	bush.xPos = lightningX
+	bush.yPos = lightningY
+	lightning.xPos = bushX
+	lightning.yPos = bushY
+	
+	// Ensure items are instantly visible
+	bush.fadeInOpacity = 1.0
+	bush.fadeInStartTime = Date.now()
+	lightning.fadeInOpacity = 1.0
+	lightning.fadeInStartTime = Date.now()
+	
+	selectedForConversion = null
+}
+
+function swapBallAndMagnet() {
+	if (!magnet) return
+	
+	let ballX = ball.xPos
+	let ballY = ball.yPos
+	let magnetX = magnet.xPos
+	let magnetY = magnet.yPos
+	
+	// Swap positions
+	ball.xPos = magnetX
+	ball.yPos = magnetY
+	magnet.xPos = ballX
+	magnet.yPos = ballY
+	
+	// Ensure magnet is instantly visible
+	magnet.fadeInOpacity = 1.0
+	magnet.fadeInStartTime = Date.now()
+	
+	// Reset ball velocity when swapping
+	ball.xVel = 0
+	ball.yVel = 0
+	ball.isBeingFlung = false
+	
+	selectedForConversion = null
+}
+
+function swapMagnetAndTarget(targetIndex) {
+	if (!magnet) return
+	
+	let magnetX = magnet.xPos
+	let magnetY = magnet.yPos
+	let target = targetsRemaining[targetIndex]
+	let targetX = target.xPos
+	let targetY = target.yPos
+	
+	// Find corresponding target in targets array
+	let targetInTargets = null
+	for (let i = 0; i < targets.length; i++) {
+		let t = targets[i]
+		let stillRemaining = targetsRemaining.some(tr => 
+			Math.abs(tr.xPos - t.xPos) < 0.5 && Math.abs(tr.yPos - t.yPos) < 0.5
+		)
+		if (stillRemaining && Math.abs(t.xPos - targetX) < 0.5 && Math.abs(t.yPos - targetY) < 0.5) {
+			targetInTargets = t
+			break
+		}
+	}
+	
+	// Swap positions
+	magnet.xPos = targetX
+	magnet.yPos = targetY
+	target.xPos = magnetX
+	target.yPos = magnetY
+	if (targetInTargets) {
+		targetInTargets.xPos = magnetX
+		targetInTargets.yPos = magnetY
+	}
+	
+	// Ensure items are instantly visible
+	magnet.fadeInOpacity = 1.0
+	magnet.fadeInStartTime = Date.now()
+	target.fadeInOpacity = 1.0
+	target.fadeInStartTime = Date.now()
+	
+	selectedForConversion = null
+}
+
+function swapMagnetAndObstacle(obstacleIndex) {
+	if (!magnet) return
+	
+	let magnetX = magnet.xPos
+	let magnetY = magnet.yPos
+	let obstacle = obstacles[obstacleIndex]
+	let obstacleX = obstacle.xPos
+	let obstacleY = obstacle.yPos
+	
+	// Swap positions
+	magnet.xPos = obstacleX
+	magnet.yPos = obstacleY
+	obstacle.xPos = magnetX
+	obstacle.yPos = magnetY
+	
+	// Ensure items are instantly visible
+	magnet.fadeInOpacity = 1.0
+	magnet.fadeInStartTime = Date.now()
+	obstacle.fadeInOpacity = 1.0
+	obstacle.fadeInStartTime = Date.now()
+	
+	selectedForConversion = null
+}
+
+function swapMagnetAndStar() {
+	if (!magnet || !star) return
+	
+	let magnetX = magnet.xPos
+	let magnetY = magnet.yPos
+	let starX = star.xPos
+	let starY = star.yPos
+	
+	// Swap positions
+	magnet.xPos = starX
+	magnet.yPos = starY
+	star.xPos = magnetX
+	star.yPos = magnetY
+	
+	// Ensure items are instantly visible
+	magnet.fadeInOpacity = 1.0
+	magnet.fadeInStartTime = Date.now()
+	star.fadeInOpacity = 1.0
+	star.fadeInStartTime = Date.now()
+	
+	selectedForConversion = null
+}
+
+function swapMagnetAndSwitcher() {
+	if (!magnet || !switcher) return
+	
+	let magnetX = magnet.xPos
+	let magnetY = magnet.yPos
+	let switcherX = switcher.xPos
+	let switcherY = switcher.yPos
+	
+	// Swap positions
+	magnet.xPos = switcherX
+	magnet.yPos = switcherY
+	switcher.xPos = magnetX
+	switcher.yPos = magnetY
+	
+	// Ensure items are instantly visible
+	magnet.fadeInOpacity = 1.0
+	magnet.fadeInStartTime = Date.now()
+	switcher.fadeInOpacity = 1.0
+	switcher.fadeInStartTime = Date.now()
+	
+	selectedForConversion = null
+}
+
+function swapMagnetAndCross() {
+	if (!magnet || !cross) return
+	
+	let magnetX = magnet.xPos
+	let magnetY = magnet.yPos
+	let crossX = cross.xPos
+	let crossY = cross.yPos
+	
+	// Swap positions
+	magnet.xPos = crossX
+	magnet.yPos = crossY
+	cross.xPos = magnetX
+	cross.yPos = magnetY
+	
+	// Ensure items are instantly visible
+	magnet.fadeInOpacity = 1.0
+	magnet.fadeInStartTime = Date.now()
+	cross.fadeInOpacity = 1.0
+	cross.fadeInStartTime = Date.now()
+	
+	selectedForConversion = null
+}
+
+function swapMagnetAndLightning() {
+	if (!magnet || !lightning) return
+	
+	let magnetX = magnet.xPos
+	let magnetY = magnet.yPos
+	let lightningX = lightning.xPos
+	let lightningY = lightning.yPos
+	
+	// Swap positions
+	magnet.xPos = lightningX
+	magnet.yPos = lightningY
+	lightning.xPos = magnetX
+	lightning.yPos = magnetY
+	
+	// Ensure items are instantly visible
+	magnet.fadeInOpacity = 1.0
+	magnet.fadeInStartTime = Date.now()
+	lightning.fadeInOpacity = 1.0
+	lightning.fadeInStartTime = Date.now()
+	
+	selectedForConversion = null
+}
+
+function swapMagnetAndBush() {
+	if (!magnet || !bush) return
+	
+	let magnetX = magnet.xPos
+	let magnetY = magnet.yPos
+	let bushX = bush.xPos
+	let bushY = bush.yPos
+	
+	// Swap positions
+	magnet.xPos = bushX
+	magnet.yPos = bushY
+	bush.xPos = magnetX
+	bush.yPos = magnetY
+	
+	// Ensure items are instantly visible
+	magnet.fadeInOpacity = 1.0
+	magnet.fadeInStartTime = Date.now()
+	bush.fadeInOpacity = 1.0
+	bush.fadeInStartTime = Date.now()
 	
 	selectedForConversion = null
 }
@@ -846,6 +1578,18 @@ function handleTouchstart(e) {
 	let targetRadius = getTargetRadius()
 	let ballRadius = getBallRadius()
 	
+	// If ball is stopped by bush effect, check ball FIRST before anything else to allow re-flinging
+	if (ballStoppedByBushEffect) {
+		let ballDistance = Math.hypot(touch1.xPos - ball.xPos, touch1.yPos - ball.yPos)
+		if (ballDistance < ballRadius + TOUCH_TOLERANCE * 2) { // Use larger tolerance for easier detection
+			// User tapped on or near ball - allow flinging
+			selectedForConversion = { type: 'ball', index: 0 }
+			ball.isBeingFlung = true
+			ballStoppedByBushEffect = false
+			return
+		}
+	}
+	
 	// Check if tapping on a star (check before obstacles/targets to prioritize)
 	if (star) {
 		let starDistance = Math.hypot(touch1.xPos - star.xPos, touch1.yPos - star.yPos)
@@ -858,13 +1602,25 @@ function handleTouchstart(e) {
 				// Second tap: we have an obstacle selected, now tapping star - swap positions
 				swapStarAndObstacle(selectedForConversion.index)
 				return
-			} else if (selectedForConversion && selectedForConversion.type === 'skull') {
-				// Second tap: we have a skull selected, now tapping star - swap positions
-				swapStarAndSkull()
+			} else if (selectedForConversion && selectedForConversion.type === 'cross') {
+				// Second tap: we have a cross selected, now tapping star - swap positions
+				swapStarAndCross()
 				return
 			} else if (selectedForConversion && selectedForConversion.type === 'switcher') {
 				// Second tap: we have a switcher selected, now tapping star - swap positions
 				swapStarAndSwitcher()
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'lightning') {
+				// Second tap: we have a lightning selected, now tapping star - swap positions
+				swapLightningAndStar()
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'bush') {
+				// Second tap: we have a bush selected, now tapping star - swap positions
+				swapBushAndStar()
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'magnet') {
+				// Second tap: we have a cannon selected, now tapping star - swap positions
+				swapMagnetAndStar()
 				return
 			} else if (selectedForConversion && selectedForConversion.type === 'ball') {
 				// Second tap: we have a ball selected, now tapping star - swap positions
@@ -878,33 +1634,45 @@ function handleTouchstart(e) {
 		}
 	}
 	
-	// Check if tapping on a skull (check before obstacles/targets to prioritize)
-	if (skull) {
-		let skullDistance = Math.hypot(touch1.xPos - skull.xPos, touch1.yPos - skull.yPos)
-		if (skullDistance < skull.radius + TOUCH_TOLERANCE) {
+	// Check if tapping on a cross (check before obstacles/targets to prioritize)
+	if (cross) {
+		let crossDistance = Math.hypot(touch1.xPos - cross.xPos, touch1.yPos - cross.yPos)
+		if (crossDistance < cross.radius + TOUCH_TOLERANCE) {
 			if (selectedForConversion && selectedForConversion.type === 'target') {
-				// Second tap: we have a target selected, now tapping skull - swap positions
-				swapSkullAndTarget(selectedForConversion.index)
+				// Second tap: we have a target selected, now tapping cross - swap positions
+				swapCrossAndTarget(selectedForConversion.index)
 				return
 			} else if (selectedForConversion && selectedForConversion.type === 'obstacle') {
-				// Second tap: we have an obstacle selected, now tapping skull - swap positions
-				swapSkullAndObstacle(selectedForConversion.index)
+				// Second tap: we have an obstacle selected, now tapping cross - swap positions
+				swapCrossAndObstacle(selectedForConversion.index)
 				return
 			} else if (selectedForConversion && selectedForConversion.type === 'star') {
-				// Second tap: we have a star selected, now tapping skull - swap positions
-				swapStarAndSkull()
+				// Second tap: we have a star selected, now tapping cross - swap positions
+				swapStarAndCross()
 				return
 			} else if (selectedForConversion && selectedForConversion.type === 'switcher') {
-				// Second tap: we have a switcher selected, now tapping skull - swap positions
-				swapSkullAndSwitcher()
+				// Second tap: we have a switcher selected, now tapping cross - swap positions
+				swapCrossAndSwitcher()
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'lightning') {
+				// Second tap: we have a lightning selected, now tapping cross - swap positions
+				swapLightningAndCross()
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'bush') {
+				// Second tap: we have a bush selected, now tapping cross - swap positions
+				swapBushAndCross()
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'magnet') {
+				// Second tap: we have a cannon selected, now tapping cross - swap positions
+				swapMagnetAndCross()
 				return
 			} else if (selectedForConversion && selectedForConversion.type === 'ball') {
-				// Second tap: we have a ball selected, now tapping skull - swap positions
-				swapBallAndSkull()
+				// Second tap: we have a ball selected, now tapping cross - swap positions
+				swapBallAndCross()
 				return
 			} else {
-				// First tap: select this skull
-				selectedForConversion = { type: 'skull', index: 0 }
+				// First tap: select this cross
+				selectedForConversion = { type: 'cross', index: 0 }
 				return
 			}
 		}
@@ -926,9 +1694,21 @@ function handleTouchstart(e) {
 				// Second tap: we have a star selected, now tapping switcher - swap positions
 				swapStarAndSwitcher()
 				return
-			} else if (selectedForConversion && selectedForConversion.type === 'skull') {
-				// Second tap: we have a skull selected, now tapping switcher - swap positions
-				swapSkullAndSwitcher()
+			} else if (selectedForConversion && selectedForConversion.type === 'cross') {
+				// Second tap: we have a cross selected, now tapping switcher - swap positions
+				swapCrossAndSwitcher()
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'lightning') {
+				// Second tap: we have a lightning selected, now tapping switcher - swap positions
+				swapLightningAndSwitcher()
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'bush') {
+				// Second tap: we have a bush selected, now tapping switcher - swap positions
+				swapBushAndSwitcher()
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'magnet') {
+				// Second tap: we have a cannon selected, now tapping switcher - swap positions
+				swapMagnetAndSwitcher()
 				return
 			} else if (selectedForConversion && selectedForConversion.type === 'ball') {
 				// Second tap: we have a ball selected, now tapping switcher - swap positions
@@ -942,11 +1722,144 @@ function handleTouchstart(e) {
 		}
 	}
 	
+	// Check if tapping on a lightning (check before obstacles/targets to prioritize)
+	if (lightning) {
+		let lightningDistance = Math.hypot(touch1.xPos - lightning.xPos, touch1.yPos - lightning.yPos)
+		if (lightningDistance < lightning.radius + TOUCH_TOLERANCE) {
+			if (selectedForConversion && selectedForConversion.type === 'target') {
+				// Second tap: we have a target selected, now tapping lightning - swap positions
+				swapLightningAndTarget(selectedForConversion.index)
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'obstacle') {
+				// Second tap: we have an obstacle selected, now tapping lightning - swap positions
+				swapLightningAndObstacle(selectedForConversion.index)
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'star') {
+				// Second tap: we have a star selected, now tapping lightning - swap positions
+				swapLightningAndStar()
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'switcher') {
+				// Second tap: we have a switcher selected, now tapping lightning - swap positions
+				swapLightningAndSwitcher()
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'cross') {
+				// Second tap: we have a cross selected, now tapping lightning - swap positions
+				swapLightningAndCross()
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'bush') {
+				// Second tap: we have a bush selected, now tapping lightning - swap positions
+				swapBushAndLightning()
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'magnet') {
+				// Second tap: we have a cannon selected, now tapping lightning - swap positions
+				swapMagnetAndLightning()
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'ball') {
+				// Second tap: we have a ball selected, now tapping lightning - swap positions
+				swapBallAndLightning()
+				return
+			} else {
+				// First tap: select this lightning
+				selectedForConversion = { type: 'lightning', index: 0 }
+				return
+			}
+		}
+	}
+	
+	// Check if tapping on a bush (check before obstacles/targets to prioritize)
+	if (bush) {
+		let bushDistance = Math.hypot(touch1.xPos - bush.xPos, touch1.yPos - bush.yPos)
+		if (bushDistance < bush.radius + TOUCH_TOLERANCE) {
+			if (selectedForConversion && selectedForConversion.type === 'target') {
+				// Second tap: we have a target selected, now tapping bush - swap positions
+				swapBushAndTarget(selectedForConversion.index)
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'obstacle') {
+				// Second tap: we have an obstacle selected, now tapping bush - swap positions
+				swapBushAndObstacle(selectedForConversion.index)
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'star') {
+				// Second tap: we have a star selected, now tapping bush - swap positions
+				swapBushAndStar()
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'switcher') {
+				// Second tap: we have a switcher selected, now tapping bush - swap positions
+				swapBushAndSwitcher()
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'cross') {
+				// Second tap: we have a cross selected, now tapping bush - swap positions
+				swapBushAndCross()
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'lightning') {
+				// Second tap: we have a lightning selected, now tapping bush - swap positions
+				swapBushAndLightning()
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'ball') {
+				// Second tap: we have a ball selected, now tapping bush - swap positions
+				swapBallAndBush()
+				return
+			} else {
+				// First tap: select this bush
+				selectedForConversion = { type: 'bush', index: 0 }
+				return
+			}
+		}
+	}
+	
+	// Check if tapping on a magnet (check before obstacles/targets to prioritize)
+	if (magnet) {
+		let magnetDistance = Math.hypot(touch1.xPos - magnet.xPos, touch1.yPos - magnet.yPos)
+		if (magnetDistance < magnet.radius + TOUCH_TOLERANCE) {
+			if (selectedForConversion && selectedForConversion.type === 'target') {
+				// Second tap: we have a target selected, now tapping magnet - swap positions
+				swapMagnetAndTarget(selectedForConversion.index)
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'obstacle') {
+				// Second tap: we have an obstacle selected, now tapping cannon - swap positions
+				swapMagnetAndObstacle(selectedForConversion.index)
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'star') {
+				// Second tap: we have a star selected, now tapping cannon - swap positions
+				swapMagnetAndStar()
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'switcher') {
+				// Second tap: we have a switcher selected, now tapping cannon - swap positions
+				swapMagnetAndSwitcher()
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'cross') {
+				// Second tap: we have a cross selected, now tapping cannon - swap positions
+				swapMagnetAndCross()
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'lightning') {
+				// Second tap: we have a lightning selected, now tapping cannon - swap positions
+				swapMagnetAndLightning()
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'bush') {
+				// Second tap: we have a bush selected, now tapping cannon - swap positions
+				swapMagnetAndBush()
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'ball') {
+				// Second tap: we have a ball selected, now tapping cannon - swap positions
+				swapBallAndMagnet()
+				return
+			} else {
+				// First tap: select this cannon
+				selectedForConversion = { type: 'magnet', index: 0 }
+				return
+			}
+		}
+	}
+	
 	// Check if tapping on an obstacle (check before ball to prioritize smaller targets)
 	for (let i = obstacles.length - 1; i >= 0; i--) {
 		let obstacle = obstacles[i]
 		let distance = Math.hypot(touch1.xPos - obstacle.xPos, touch1.yPos - obstacle.yPos)
 		if (distance < targetRadius + TOUCH_TOLERANCE) {
+			// If ball is stopped by bush effect and overlaps this obstacle, skip obstacle selection
+			if (ballStoppedByBushEffect && Math.abs(ball.xPos - obstacle.xPos) < 1 && Math.abs(ball.yPos - obstacle.yPos) < 1) {
+				// Ball is overlapping obstacle - skip this obstacle to allow ball to be selected
+				continue
+			}
 			if (selectedForConversion && selectedForConversion.type === 'target') {
 				// Second tap: we have a target selected, now tapping obstacle - convert both
 				convertTargetAndObstacle(selectedForConversion.index, i)
@@ -955,13 +1868,25 @@ function handleTouchstart(e) {
 				// Second tap: we have a star selected, now tapping obstacle - swap positions
 				swapStarAndObstacle(i)
 				return
-			} else if (selectedForConversion && selectedForConversion.type === 'skull') {
-				// Second tap: we have a skull selected, now tapping obstacle - swap positions
-				swapSkullAndObstacle(i)
+			} else if (selectedForConversion && selectedForConversion.type === 'cross') {
+				// Second tap: we have a cross selected, now tapping obstacle - swap positions
+				swapCrossAndObstacle(i)
 				return
 			} else if (selectedForConversion && selectedForConversion.type === 'switcher') {
 				// Second tap: we have a switcher selected, now tapping obstacle - swap positions
 				swapSwitcherAndObstacle(i)
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'lightning') {
+				// Second tap: we have a lightning selected, now tapping obstacle - swap positions
+				swapLightningAndObstacle(i)
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'bush') {
+				// Second tap: we have a bush selected, now tapping obstacle - swap positions
+				swapBushAndObstacle(i)
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'magnet') {
+				// Second tap: we have a cannon selected, now tapping obstacle - swap positions
+				swapMagnetAndObstacle(i)
 				return
 			} else if (selectedForConversion && selectedForConversion.type === 'ball') {
 				// Second tap: we have a ball selected, now tapping obstacle - swap positions
@@ -994,13 +1919,21 @@ function handleTouchstart(e) {
 				// Second tap: we have a star selected, now tapping target - swap positions
 				swapStarAndTarget(i)
 				return
-			} else if (selectedForConversion && selectedForConversion.type === 'skull') {
-				// Second tap: we have a skull selected, now tapping target - swap positions
-				swapSkullAndTarget(i)
+			} else if (selectedForConversion && selectedForConversion.type === 'cross') {
+				// Second tap: we have a cross selected, now tapping target - swap positions
+				swapCrossAndTarget(i)
 				return
 			} else if (selectedForConversion && selectedForConversion.type === 'switcher') {
 				// Second tap: we have a switcher selected, now tapping target - swap positions
 				swapSwitcherAndTarget(i)
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'lightning') {
+				// Second tap: we have a lightning selected, now tapping target - swap positions
+				swapLightningAndTarget(i)
+				return
+			} else if (selectedForConversion && selectedForConversion.type === 'bush') {
+				// Second tap: we have a bush selected, now tapping target - swap positions
+				swapBushAndTarget(i)
 				return
 			} else if (selectedForConversion && selectedForConversion.type === 'ball') {
 				// Second tap: we have a ball selected, now tapping target - swap positions
@@ -1043,8 +1976,17 @@ function handleTouchstart(e) {
 			} else if (selectedForConversion.type === 'switcher') {
 				swapBallAndSwitcher()
 				return
-			} else if (selectedForConversion.type === 'skull') {
-				swapBallAndSkull()
+			} else if (selectedForConversion.type === 'cross') {
+				swapBallAndCross()
+				return
+			} else if (selectedForConversion.type === 'lightning') {
+				swapBallAndLightning()
+				return
+			} else if (selectedForConversion.type === 'bush') {
+				swapBallAndBush()
+				return
+			} else if (selectedForConversion.type === 'magnet') {
+				swapBallAndMagnet()
 				return
 			}
 		}
@@ -1052,6 +1994,8 @@ function handleTouchstart(e) {
 		// If nothing selected, select the ball (but allow flinging on drag)
 		selectedForConversion = { type: 'ball', index: 0 }
 		ball.isBeingFlung = true
+		// Reset the flag when user starts flinging again
+		ballStoppedByBushEffect = false
 		// Don't set shotActive here - only set it when user actually drags
 		return
 	}
@@ -1070,8 +2014,8 @@ function handleTouchmove(e) {
 		// Only start a shot when user actually drags (not just taps)
 		if (!shotActive) {
 			shotActive = true
-			// Reset skull hit flag when starting a new try
-			skullHitThisTry = false
+			// Reset cross hit flag when starting a new try
+			crossHitThisTry = false
 			// Handle tutorial progression when the ball is flung.
 			// Level 1: multi-step tutorial (only advance 1 -> 2 here).
 			if (level === 1 && !tutorialCompleted && tutorialStep === 1) {
@@ -1101,6 +2045,43 @@ function handleTouchend() {
 	isConvertingObstacle = false
 }
 
+function getScoreBounds() {
+	// Get score text bounds to avoid overlapping
+	ctx.save()
+	ctx.font = "bold 56px Arial"
+	ctx.textAlign = "right"
+	let scoreText = `${completionScore}`
+	let scoreMetrics = ctx.measureText(scoreText)
+	let scoreWidth = scoreMetrics.width || 0
+	let ascent = scoreMetrics.actualBoundingBoxAscent
+	let descent = scoreMetrics.actualBoundingBoxDescent
+	if (!Number.isFinite(ascent)) ascent = 56
+	if (!Number.isFinite(descent)) descent = 0
+	ctx.restore()
+	
+	let scoreTextX = canvas.width - 12
+	let scoreTextY = 56
+	return {
+		left: scoreTextX - scoreWidth,
+		right: scoreTextX,
+		top: scoreTextY - ascent,
+		bottom: scoreTextY + descent
+	}
+}
+
+function overlapsWithScore(xPos, yPos, radius) {
+	let scoreBounds = getScoreBounds()
+	// Add padding for radius
+	let spriteLeft = xPos - radius
+	let spriteRight = xPos + radius
+	let spriteTop = yPos - radius
+	let spriteBottom = yPos + radius
+	
+	// Check if sprite overlaps with score area
+	return !(spriteRight < scoreBounds.left || spriteLeft > scoreBounds.right ||
+	         spriteBottom < scoreBounds.top || spriteTop > scoreBounds.bottom)
+}
+
 function placeBall() {
 	let radius = getBallRadius()
 	let targetRadius = getTargetRadius()
@@ -1124,6 +2105,11 @@ function placeBall() {
 		}
 		
 		validPosition = true
+		
+		// Check if overlaps with score
+		if (overlapsWithScore(xPos, yPos, radius)) {
+			validPosition = false
+		}
 		
 		// Check distance from existing targets using proper Euclidean distance
 		for (let i = 0; i < targets.length; i++) {
@@ -1183,6 +2169,11 @@ function placeTargetsWithCount(targetCount) {
 			let maxY = canvas.height - Math.max(radius, bottomExclusion)
 			yPos = minY + (maxY - minY) * Math.random()
 			validPosition = true
+			
+			// Check if overlaps with score
+			if (overlapsWithScore(xPos, yPos, radius)) {
+				validPosition = false
+			}
 			
 			// Check distance from ball using proper Euclidean distance
 			let dx = xPos - ball.xPos
@@ -1254,6 +2245,11 @@ function placeObstaclesWithCount(obstacleCount) {
 			let maxY = canvas.height - Math.max(obstacleRadius, bottomExclusion)
 			yPos = minY + (maxY - minY) * Math.random()
 			validPosition = true
+			
+			// Check if overlaps with score
+			if (overlapsWithScore(xPos, yPos, obstacleRadius)) {
+				validPosition = false
+			}
 			
 			// Check distance from ball using proper Euclidean distance
 			let dx = xPos - ball.xPos
@@ -1463,6 +2459,11 @@ function placeStar() {
 		yPos = minY + (maxY - minY) * Math.random()
 		validPosition = true
 		
+		// Check if overlaps with score
+		if (overlapsWithScore(xPos, yPos, starRadius)) {
+			validPosition = false
+		}
+		
 		// Check distance from ball
 		let dx = xPos - ball.xPos
 		let dy = yPos - ball.yPos
@@ -1511,12 +2512,12 @@ function placeStar() {
 			}
 		}
 		
-		// Check distance from skull if it exists
-		if (validPosition && skull) {
-			let dx5 = xPos - skull.xPos
-			let dy5 = yPos - skull.yPos
+		// Check distance from cross if it exists
+		if (validPosition && cross) {
+			let dx5 = xPos - cross.xPos
+			let dy5 = yPos - cross.yPos
 			let distance5 = Math.hypot(dx5, dy5)
-			let minDistance5 = starRadius + skull.radius + minSeparation
+			let minDistance5 = starRadius + cross.radius + minSeparation
 			if (distance5 < minDistance5) {
 				validPosition = false
 			}
@@ -1568,6 +2569,11 @@ function placeSwitcher() {
 		yPos = minY + (maxY - minY) * Math.random()
 		validPosition = true
 		
+		// Check if overlaps with score
+		if (overlapsWithScore(xPos, yPos, switcherRadius)) {
+			validPosition = false
+		}
+		
 		// Check distance from ball
 		let dx = xPos - ball.xPos
 		let dy = yPos - ball.yPos
@@ -1616,12 +2622,12 @@ function placeSwitcher() {
 			}
 		}
 		
-		// Check distance from skull if it exists
-		if (validPosition && skull) {
-			let dx5 = xPos - skull.xPos
-			let dy5 = yPos - skull.yPos
+		// Check distance from cross if it exists
+		if (validPosition && cross) {
+			let dx5 = xPos - cross.xPos
+			let dy5 = yPos - cross.yPos
 			let distance5 = Math.hypot(dx5, dy5)
-			let minDistance5 = switcherRadius + skull.radius + minSeparation
+			let minDistance5 = switcherRadius + cross.radius + minSeparation
 			if (distance5 < minDistance5) {
 				validPosition = false
 			}
@@ -1647,15 +2653,15 @@ function placeSwitcher() {
 	}
 }
 
-function placeSkull() {
-	let skullRadius = getBallRadius() // Same size as ball
+function placeCross() {
+	let crossRadius = getBallRadius() // Same size as ball
 	let ballRadius = getBallRadius()
 	let targetRadius = getTargetRadius()
 	let minSeparation = 5
 	let maxAttempts = 100
 	// No exclusion zone - score and buttons are disabled
 	let topExclusionZone = 0
-	// Keep skull away from the very bottom: never within 4 grey-ball
+	// Keep cross away from the very bottom: never within 4 grey-ball
 	// diameters of the bottom edge.
 	let bottomExclusion = 8 * ballRadius // 4 * (2 * ballRadius)
 	let attempts = 0
@@ -1663,21 +2669,26 @@ function placeSkull() {
 	let validPosition = false
 	
 	while (!validPosition && attempts < maxAttempts) {
-		// Ensure skull is fully within canvas bounds, and not too close
+		// Ensure cross is fully within canvas bounds, and not too close
 		// to the bottom edge.
-		xPos = skullRadius + (canvas.width - 2 * skullRadius) * Math.random()
+		xPos = crossRadius + (canvas.width - 2 * crossRadius) * Math.random()
 		// Exclude top area unless high level, and also exclude a band
 		// near the bottom based on grey ball size.
-		let minY = skullRadius + topExclusionZone
-		let maxY = canvas.height - Math.max(skullRadius, bottomExclusion)
+		let minY = crossRadius + topExclusionZone
+		let maxY = canvas.height - Math.max(crossRadius, bottomExclusion)
 		yPos = minY + (maxY - minY) * Math.random()
 		validPosition = true
+		
+		// Check if overlaps with score
+		if (overlapsWithScore(xPos, yPos, crossRadius)) {
+			validPosition = false
+		}
 		
 		// Check distance from ball
 		let dx = xPos - ball.xPos
 		let dy = yPos - ball.yPos
 		let distance = Math.hypot(dx, dy)
-		let minDistance = skullRadius + ballRadius + minSeparation
+		let minDistance = crossRadius + ballRadius + minSeparation
 		if (distance < minDistance) {
 			validPosition = false
 		}
@@ -1688,7 +2699,7 @@ function placeSkull() {
 				let dx2 = xPos - targets[j].xPos
 				let dy2 = yPos - targets[j].yPos
 				let distance2 = Math.hypot(dx2, dy2)
-				let minDistance2 = skullRadius + targetRadius + minSeparation
+				let minDistance2 = crossRadius + targetRadius + minSeparation
 				if (distance2 < minDistance2) {
 					validPosition = false
 					break
@@ -1702,7 +2713,7 @@ function placeSkull() {
 				let dx3 = xPos - obstacles[j].xPos
 				let dy3 = yPos - obstacles[j].yPos
 				let distance3 = Math.hypot(dx3, dy3)
-				let minDistance3 = skullRadius + obstacles[j].radius + minSeparation
+				let minDistance3 = crossRadius + obstacles[j].radius + minSeparation
 				if (distance3 < minDistance3) {
 					validPosition = false
 					break
@@ -1715,7 +2726,7 @@ function placeSkull() {
 			let dx4 = xPos - star.xPos
 			let dy4 = yPos - star.yPos
 			let distance4 = Math.hypot(dx4, dy4)
-			let minDistance4 = skullRadius + star.radius + minSeparation
+			let minDistance4 = crossRadius + star.radius + minSeparation
 			if (distance4 < minDistance4) {
 				validPosition = false
 			}
@@ -1726,7 +2737,7 @@ function placeSkull() {
 			let dx5 = xPos - switcher.xPos
 			let dy5 = yPos - switcher.yPos
 			let distance5 = Math.hypot(dx5, dy5)
-			let minDistance5 = skullRadius + switcher.radius + minSeparation
+			let minDistance5 = crossRadius + switcher.radius + minSeparation
 			if (distance5 < minDistance5) {
 				validPosition = false
 			}
@@ -1737,16 +2748,412 @@ function placeSkull() {
 	
 	// Fallback: ensure position is valid even if loop exhausted attempts
 	if (!validPosition) {
-		xPos = skullRadius + (canvas.width - 2 * skullRadius) * Math.random()
-		let minY = skullRadius + topExclusionZone
-		let maxY = canvas.height - Math.max(skullRadius, bottomExclusion)
+		xPos = crossRadius + (canvas.width - 2 * crossRadius) * Math.random()
+		let minY = crossRadius + topExclusionZone
+		let maxY = canvas.height - Math.max(crossRadius, bottomExclusion)
 		yPos = minY + (maxY - minY) * Math.random()
 	}
 	
-	skull = {
+	cross = {
 		xPos: xPos,
 		yPos: yPos,
-		radius: skullRadius,
+		radius: crossRadius,
+		fadeInOpacity: 0, // Start invisible for fade-in
+		fadeInStartTime: Date.now() + FADE_IN_DELAY // Delay before fade-in starts
+	}
+}
+
+function placeLightning() {
+	let lightningRadius = getBallRadius() // Same size as ball
+	let ballRadius = getBallRadius()
+	let targetRadius = getTargetRadius()
+	let minSeparation = 5
+	let maxAttempts = 100
+	// No exclusion zone - score and buttons are disabled
+	let topExclusionZone = 0
+	// Keep lightning away from the very bottom: never within 4 grey-ball
+	// diameters of the bottom edge.
+	let bottomExclusion = 8 * ballRadius // 4 * (2 * ballRadius)
+	let attempts = 0
+	let xPos, yPos
+	let validPosition = false
+	
+	while (!validPosition && attempts < maxAttempts) {
+		// Ensure lightning is fully within canvas bounds, and not too close
+		// to the bottom edge.
+		xPos = lightningRadius + (canvas.width - 2 * lightningRadius) * Math.random()
+		// Exclude top area unless high level, and also exclude a band
+		// near the bottom based on grey ball size.
+		let minY = lightningRadius + topExclusionZone
+		let maxY = canvas.height - Math.max(lightningRadius, bottomExclusion)
+		yPos = minY + (maxY - minY) * Math.random()
+		validPosition = true
+		
+		// Check if overlaps with score
+		if (overlapsWithScore(xPos, yPos, lightningRadius)) {
+			validPosition = false
+		}
+		
+		// Check distance from ball
+		let dx = xPos - ball.xPos
+		let dy = yPos - ball.yPos
+		let distance = Math.hypot(dx, dy)
+		let minDistance = lightningRadius + ballRadius + minSeparation
+		if (distance < minDistance) {
+			validPosition = false
+		}
+		
+		// Check distance from targets
+		if (validPosition) {
+			for (let j = 0; j < targets.length; j++) {
+				let dx2 = xPos - targets[j].xPos
+				let dy2 = yPos - targets[j].yPos
+				let distance2 = Math.hypot(dx2, dy2)
+				let minDistance2 = lightningRadius + targetRadius + minSeparation
+				if (distance2 < minDistance2) {
+					validPosition = false
+					break
+				}
+			}
+		}
+		
+		// Check distance from obstacles
+		if (validPosition) {
+			for (let j = 0; j < obstacles.length; j++) {
+				let dx3 = xPos - obstacles[j].xPos
+				let dy3 = yPos - obstacles[j].yPos
+				let distance3 = Math.hypot(dx3, dy3)
+				let minDistance3 = lightningRadius + obstacles[j].radius + minSeparation
+				if (distance3 < minDistance3) {
+					validPosition = false
+					break
+				}
+			}
+		}
+		
+		// Check distance from star if it exists
+		if (validPosition && star) {
+			let dx4 = xPos - star.xPos
+			let dy4 = yPos - star.yPos
+			let distance4 = Math.hypot(dx4, dy4)
+			let minDistance4 = lightningRadius + star.radius + minSeparation
+			if (distance4 < minDistance4) {
+				validPosition = false
+			}
+		}
+		
+		// Check distance from switcher if it exists
+		if (validPosition && switcher) {
+			let dx5 = xPos - switcher.xPos
+			let dy5 = yPos - switcher.yPos
+			let distance5 = Math.hypot(dx5, dy5)
+			let minDistance5 = lightningRadius + switcher.radius + minSeparation
+			if (distance5 < minDistance5) {
+				validPosition = false
+			}
+		}
+		
+		// Check distance from cross if it exists
+		if (validPosition && cross) {
+			let dx6 = xPos - cross.xPos
+			let dy6 = yPos - cross.yPos
+			let distance6 = Math.hypot(dx6, dy6)
+			let minDistance6 = lightningRadius + cross.radius + minSeparation
+			if (distance6 < minDistance6) {
+				validPosition = false
+			}
+		}
+		
+		attempts++
+	}
+	
+	// Fallback: ensure position is valid even if loop exhausted attempts
+	if (!validPosition) {
+		xPos = lightningRadius + (canvas.width - 2 * lightningRadius) * Math.random()
+		let minY = lightningRadius + topExclusionZone
+		let maxY = canvas.height - Math.max(lightningRadius, bottomExclusion)
+		yPos = minY + (maxY - minY) * Math.random()
+	}
+	
+	lightning = {
+		xPos: xPos,
+		yPos: yPos,
+		radius: lightningRadius,
+		fadeInOpacity: 0, // Start invisible for fade-in
+		fadeInStartTime: Date.now() + FADE_IN_DELAY // Delay before fade-in starts
+	}
+}
+
+function placeBush() {
+	let bushRadius = getBallRadius() // Same size as ball
+	let ballRadius = getBallRadius()
+	let targetRadius = getTargetRadius()
+	let minSeparation = 5
+	let maxAttempts = 100
+	// No exclusion zone - score and buttons are disabled
+	let topExclusionZone = 0
+	// Keep bush away from the very bottom: never within 4 grey-ball
+	// diameters of the bottom edge.
+	let bottomExclusion = 8 * ballRadius // 4 * (2 * ballRadius)
+	let attempts = 0
+	let xPos, yPos
+	let validPosition = false
+	
+	while (!validPosition && attempts < maxAttempts) {
+		// Ensure bush is fully within canvas bounds, and not too close
+		// to the bottom edge.
+		xPos = bushRadius + (canvas.width - 2 * bushRadius) * Math.random()
+		// Exclude top area unless high level, and also exclude a band
+		// near the bottom based on grey ball size.
+		let minY = bushRadius + topExclusionZone
+		let maxY = canvas.height - Math.max(bushRadius, bottomExclusion)
+		yPos = minY + (maxY - minY) * Math.random()
+		validPosition = true
+		
+		// Check if overlaps with score
+		if (overlapsWithScore(xPos, yPos, bushRadius)) {
+			validPosition = false
+		}
+		
+		// Check distance from ball
+		let dx = xPos - ball.xPos
+		let dy = yPos - ball.yPos
+		let distance = Math.hypot(dx, dy)
+		let minDistance = bushRadius + ballRadius + minSeparation
+		if (distance < minDistance) {
+			validPosition = false
+		}
+		
+		// Check distance from targets
+		if (validPosition) {
+			for (let j = 0; j < targets.length; j++) {
+				let dx2 = xPos - targets[j].xPos
+				let dy2 = yPos - targets[j].yPos
+				let distance2 = Math.hypot(dx2, dy2)
+				let minDistance2 = bushRadius + targetRadius + minSeparation
+				if (distance2 < minDistance2) {
+					validPosition = false
+					break
+				}
+			}
+		}
+		
+		// Check distance from obstacles
+		if (validPosition) {
+			for (let j = 0; j < obstacles.length; j++) {
+				let dx3 = xPos - obstacles[j].xPos
+				let dy3 = yPos - obstacles[j].yPos
+				let distance3 = Math.hypot(dx3, dy3)
+				let minDistance3 = bushRadius + obstacles[j].radius + minSeparation
+				if (distance3 < minDistance3) {
+					validPosition = false
+					break
+				}
+			}
+		}
+		
+		// Check distance from star if it exists
+		if (validPosition && star) {
+			let dx4 = xPos - star.xPos
+			let dy4 = yPos - star.yPos
+			let distance4 = Math.hypot(dx4, dy4)
+			let minDistance4 = bushRadius + star.radius + minSeparation
+			if (distance4 < minDistance4) {
+				validPosition = false
+			}
+		}
+		
+		// Check distance from switcher if it exists
+		if (validPosition && switcher) {
+			let dx5 = xPos - switcher.xPos
+			let dy5 = yPos - switcher.yPos
+			let distance5 = Math.hypot(dx5, dy5)
+			let minDistance5 = bushRadius + switcher.radius + minSeparation
+			if (distance5 < minDistance5) {
+				validPosition = false
+			}
+		}
+		
+		// Check distance from cross if it exists
+		if (validPosition && cross) {
+			let dx6 = xPos - cross.xPos
+			let dy6 = yPos - cross.yPos
+			let distance6 = Math.hypot(dx6, dy6)
+			let minDistance6 = bushRadius + cross.radius + minSeparation
+			if (distance6 < minDistance6) {
+				validPosition = false
+			}
+		}
+		
+		// Check distance from lightning if it exists
+		if (validPosition && lightning) {
+			let dx7 = xPos - lightning.xPos
+			let dy7 = yPos - lightning.yPos
+			let distance7 = Math.hypot(dx7, dy7)
+			let minDistance7 = bushRadius + lightning.radius + minSeparation
+			if (distance7 < minDistance7) {
+				validPosition = false
+			}
+		}
+		
+		attempts++
+	}
+	
+	// Fallback: ensure position is valid even if loop exhausted attempts
+	if (!validPosition) {
+		xPos = bushRadius + (canvas.width - 2 * bushRadius) * Math.random()
+		let minY = bushRadius + topExclusionZone
+		let maxY = canvas.height - Math.max(bushRadius, bottomExclusion)
+		yPos = minY + (maxY - minY) * Math.random()
+	}
+	
+	bush = {
+		xPos: xPos,
+		yPos: yPos,
+		radius: bushRadius,
+		fadeInOpacity: 0, // Start invisible for fade-in
+		fadeInStartTime: Date.now() + FADE_IN_DELAY // Delay before fade-in starts
+	}
+}
+
+function placeMagnet() {
+	let magnetRadius = getBallRadius() // Same size as ball
+	let ballRadius = getBallRadius()
+	let targetRadius = getTargetRadius()
+	let minSeparation = 5
+	let maxAttempts = 100
+	// No exclusion zone - score and buttons are disabled
+	let topExclusionZone = 0
+	// Keep magnet away from the very bottom: never within 4 grey-ball
+	// diameters of the bottom edge.
+	let bottomExclusion = 8 * ballRadius // 4 * (2 * ballRadius)
+	let attempts = 0
+	let xPos, yPos
+	let validPosition = false
+	
+	while (!validPosition && attempts < maxAttempts) {
+		// Ensure magnet is fully within canvas bounds, and not too close
+		// to the bottom edge.
+		xPos = magnetRadius + (canvas.width - 2 * magnetRadius) * Math.random()
+		// Exclude top area unless high level, and also exclude a band
+		// near the bottom based on grey ball size.
+		let minY = magnetRadius + topExclusionZone
+		let maxY = canvas.height - Math.max(magnetRadius, bottomExclusion)
+		yPos = minY + (maxY - minY) * Math.random()
+		validPosition = true
+		
+		// Check if overlaps with score
+		if (overlapsWithScore(xPos, yPos, magnetRadius)) {
+			validPosition = false
+		}
+		
+		// Check distance from ball
+		let dx = xPos - ball.xPos
+		let dy = yPos - ball.yPos
+		let distance = Math.hypot(dx, dy)
+		let minDistance = magnetRadius + ballRadius + minSeparation
+		if (distance < minDistance) {
+			validPosition = false
+		}
+		
+		// Check distance from targets
+		if (validPosition) {
+			for (let j = 0; j < targets.length; j++) {
+				let dx2 = xPos - targets[j].xPos
+				let dy2 = yPos - targets[j].yPos
+				let distance2 = Math.hypot(dx2, dy2)
+				let minDistance2 = magnetRadius + targetRadius + minSeparation
+				if (distance2 < minDistance2) {
+					validPosition = false
+					break
+				}
+			}
+		}
+		
+		// Check distance from obstacles
+		if (validPosition) {
+			for (let j = 0; j < obstacles.length; j++) {
+				let dx3 = xPos - obstacles[j].xPos
+				let dy3 = yPos - obstacles[j].yPos
+				let distance3 = Math.hypot(dx3, dy3)
+				let minDistance3 = magnetRadius + obstacles[j].radius + minSeparation
+				if (distance3 < minDistance3) {
+					validPosition = false
+					break
+				}
+			}
+		}
+		
+		// Check distance from star if it exists
+		if (validPosition && star) {
+			let dx4 = xPos - star.xPos
+			let dy4 = yPos - star.yPos
+			let distance4 = Math.hypot(dx4, dy4)
+			let minDistance4 = magnetRadius + star.radius + minSeparation
+			if (distance4 < minDistance4) {
+				validPosition = false
+			}
+		}
+		
+		// Check distance from switcher if it exists
+		if (validPosition && switcher) {
+			let dx5 = xPos - switcher.xPos
+			let dy5 = yPos - switcher.yPos
+			let distance5 = Math.hypot(dx5, dy5)
+			let minDistance5 = magnetRadius + switcher.radius + minSeparation
+			if (distance5 < minDistance5) {
+				validPosition = false
+			}
+		}
+		
+		// Check distance from cross if it exists
+		if (validPosition && cross) {
+			let dx6 = xPos - cross.xPos
+			let dy6 = yPos - cross.yPos
+			let distance6 = Math.hypot(dx6, dy6)
+			let minDistance6 = magnetRadius + cross.radius + minSeparation
+			if (distance6 < minDistance6) {
+				validPosition = false
+			}
+		}
+		
+		// Check distance from lightning if it exists
+		if (validPosition && lightning) {
+			let dx7 = xPos - lightning.xPos
+			let dy7 = yPos - lightning.yPos
+			let distance7 = Math.hypot(dx7, dy7)
+			let minDistance7 = magnetRadius + lightning.radius + minSeparation
+			if (distance7 < minDistance7) {
+				validPosition = false
+			}
+		}
+		
+		// Check distance from bush if it exists
+		if (validPosition && bush) {
+			let dx8 = xPos - bush.xPos
+			let dy8 = yPos - bush.yPos
+			let distance8 = Math.hypot(dx8, dy8)
+			let minDistance8 = magnetRadius + bush.radius + minSeparation
+			if (distance8 < minDistance8) {
+				validPosition = false
+			}
+		}
+		
+		attempts++
+	}
+	
+	// Fallback: ensure position is valid even if loop exhausted attempts
+	if (!validPosition) {
+		xPos = magnetRadius + (canvas.width - 2 * magnetRadius) * Math.random()
+		let minY = magnetRadius + topExclusionZone
+		let maxY = canvas.height - Math.max(magnetRadius, bottomExclusion)
+		yPos = minY + (maxY - minY) * Math.random()
+	}
+	
+	magnet = {
+		xPos: xPos,
+		yPos: yPos,
+		radius: magnetRadius,
 		fadeInOpacity: 0, // Start invisible for fade-in
 		fadeInStartTime: Date.now() + FADE_IN_DELAY // Delay before fade-in starts
 	}
@@ -1798,8 +3205,59 @@ function moveBall() {
 	// Normal motion
 	ball.xPos += ball.xVel
 	ball.yPos += ball.yVel
+	
+	// Apply friction
 	ball.xVel *= FRICTION 
 	ball.yVel *= FRICTION
+
+	// If magnet effect is active, make ALL targets drift towards the ball
+	if (magnetEffectActive) {
+		let basePullStrength = 2.5 // Base strength of magnetic pull (made very visible)
+		
+		for (let i = 0; i < targetsRemaining.length; i++) {
+			let targetRemaining = targetsRemaining[i]
+			let dx = ball.xPos - targetRemaining.xPos
+			let dy = ball.yPos - targetRemaining.yPos
+			let distance = Math.hypot(dx, dy)
+			
+			// All targets drift towards ball (stronger when closer)
+			if (distance > 0) {
+				// Normalize direction
+				let dirX = dx / distance
+				let dirY = dy / distance
+				
+				// Calculate pull strength - stronger when closer, but always active
+				// Use a simple inverse distance formula for more visible effect
+				let maxDistance = Math.max(canvas.width, canvas.height)
+				let pullStrength = basePullStrength * (1 / (1 + distance / (maxDistance * 0.2)))
+				
+				// Apply drift to targetRemaining
+				targetRemaining.xPos += dirX * pullStrength
+				targetRemaining.yPos += dirY * pullStrength
+				
+				// Update corresponding target in targets array by matching position (with larger tolerance)
+				// Try to match by finding the closest target
+				let bestMatch = null
+				let bestMatchDist = Infinity
+				for (let j = 0; j < targets.length; j++) {
+					let dist = Math.hypot(
+						targets[j].xPos - targetRemaining.xPos,
+						targets[j].yPos - targetRemaining.yPos
+					)
+					if (dist < bestMatchDist && dist < 100) { // Even larger tolerance for matching after drift
+						bestMatchDist = dist
+						bestMatch = j
+					}
+				}
+				
+				// If we found a match, update it
+				if (bestMatch !== null) {
+					targets[bestMatch].xPos = targetRemaining.xPos
+					targets[bestMatch].yPos = targetRemaining.yPos
+				}
+			}
+		}
+	}
 
 	// If a shot is in progress, the ball has effectively stopped (after the fling),
 	// and we still have targets remaining, start a quick animated reset of this
@@ -1812,6 +3270,11 @@ function moveBall() {
 			// with-friction prediction says it will clear all remaining targets,
 			// don't end the run yet.
 			if (speed >= BALL_MIN_CONTINUE_SPEED && willClearAllTargetsOnCurrentPath()) {
+				return
+			}
+			
+			// Don't auto-reset if ball was stopped by bush effect (user can fling again)
+			if (ballStoppedByBushEffect) {
 				return
 			}
 
@@ -1864,7 +3327,7 @@ function moveBall() {
 				}
 			}
 			
-			// Restore sprites (star, switcher, skull) exactly as they were at level start
+			// Restore sprites (star, switcher, cross) exactly as they were at level start
 			if (savedStar) {
 				star = JSON.parse(JSON.stringify(savedStar))
 				star.fadeInOpacity = 0
@@ -1879,15 +3342,41 @@ function moveBall() {
 			} else {
 				switcher = null
 			}
-			if (savedSkull) {
-				skull = JSON.parse(JSON.stringify(savedSkull))
-				skull.fadeInOpacity = 0
-				skull.fadeInStartTime = autoResetStartTime
-				// Reset skull hit flag so it can be hit again
-				skullHitThisTry = false
+			if (savedCross) {
+				cross = JSON.parse(JSON.stringify(savedCross))
+				cross.fadeInOpacity = 0
+				cross.fadeInStartTime = autoResetStartTime
+				// Reset cross hit flag so it can be hit again
+				crossHitThisTry = false
 			} else {
-				skull = null
+				cross = null
 			}
+			if (savedLightning) {
+				lightning = JSON.parse(JSON.stringify(savedLightning))
+				lightning.fadeInOpacity = 0
+				lightning.fadeInStartTime = autoResetStartTime
+			} else {
+				lightning = null
+			}
+			if (savedBush) {
+				bush = JSON.parse(JSON.stringify(savedBush))
+				bush.fadeInOpacity = 0
+				bush.fadeInStartTime = autoResetStartTime
+			} else {
+				bush = null
+			}
+			if (savedMagnet) {
+				magnet = JSON.parse(JSON.stringify(savedMagnet))
+				magnet.fadeInOpacity = 0
+				magnet.fadeInStartTime = autoResetStartTime
+			} else {
+				magnet = null
+			}
+			// Reset lightning, bush, and cannon effects
+			lightningEffectActive = false
+			bushEffectActive = false
+			magnetEffectActive = false
+			ballStoppedByBushEffect = false
 			
 			return
 		}
@@ -1952,7 +3441,10 @@ function handleCollision() {
 	handleCollisionWithEdge()
 	handleCollisionWithStar()
 	handleCollisionWithSwitcher()
-	handleCollisionWithSkull()
+	handleCollisionWithCross()
+	handleCollisionWithLightning()
+	handleCollisionWithBush()
+	handleCollisionWithMagnet()
 	handleCollisionWithTrophy()
 }
 
@@ -1974,6 +3466,19 @@ function handleCollisionWithTarget() {
 			
 			// Create fireworks every time a target is collected
 			createFireworks(targetX, targetY)
+			
+			// If bush effect is active, stop the ball (user can fling again)
+			if (bushEffectActive) {
+				ballStoppedByBushEffect = true
+				ball.xVel = 0
+				ball.yVel = 0
+				ball.isBeingFlung = false
+				// Position ball perfectly overlapping with target center
+				ball.xPos = targetX
+				ball.yPos = targetY
+				// Don't auto-reset - let user fling again
+				return
+			}
 			
 			// Fade away obstacles when last target is collected
 			if (wasLastTarget) {
@@ -2023,7 +3528,7 @@ function handleCollisionWithObstacle() {
 	let ballRadius = getBallRadius()
 	let pushAwayBuffer = 1 // Small buffer to prevent sticking
 	
-	for (let i = 0; i < obstacles.length; i++) {
+	for (let i = obstacles.length - 1; i >= 0; i--) {
 		let obstacle = obstacles[i]
 		let dx = ball.xPos - obstacle.xPos
 		let dy = ball.yPos - obstacle.yPos
@@ -2031,6 +3536,15 @@ function handleCollisionWithObstacle() {
 		let collisionDistance = ballRadius + obstacle.radius
 		
 		if (distance < collisionDistance && distance > 0) {
+			// If lightning effect is active, remove the obstacle
+			if (lightningEffectActive) {
+				obstacles.splice(i, 1)
+				continue
+			}
+			
+			// If bush effect is active, bounce normally (don't stop)
+			// Note: bush effect only stops ball when hitting targets, not obstacles
+			
 			// Normalize direction
 			let normalX = dx / distance
 			let normalY = dy / distance
@@ -2164,18 +3678,18 @@ function handleCollisionWithSwitcher() {
 	}
 }
 
-function handleCollisionWithSkull() {
-	if (!skull || skullHitThisTry) return // Idempotent: only work once per try
+function handleCollisionWithCross() {
+	if (!cross || crossHitThisTry) return // Idempotent: only work once per try
 	
 	let ballRadius = getBallRadius()
-	let dx = ball.xPos - skull.xPos
-	let dy = ball.yPos - skull.yPos
+	let dx = ball.xPos - cross.xPos
+	let dy = ball.yPos - cross.yPos
 	let distance = Math.hypot(dx, dy)
-	let collisionDistance = ballRadius + skull.radius
+	let collisionDistance = ballRadius + cross.radius
 	
 	if (distance < collisionDistance && distance > 0) {
-		// Ball hit the skull - double the number of obstacles (idempotent)
-		skullHitThisTry = true
+		// Ball hit the cross - double the number of obstacles (idempotent)
+		crossHitThisTry = true
 		
 		// Save current obstacle count
 		let currentObstacleCount = obstacles.length
@@ -2237,12 +3751,12 @@ function handleCollisionWithSkull() {
 					}
 				}
 				
-				// Check distance from skull
-				if (validPosition && skull) {
-					let dx4 = xPos - skull.xPos
-					let dy4 = yPos - skull.yPos
+				// Check distance from cross
+				if (validPosition && cross) {
+					let dx4 = xPos - cross.xPos
+					let dy4 = yPos - cross.yPos
 					let dist4 = Math.hypot(dx4, dy4)
-					let minDist4 = obstacleRadius + skull.radius + minSeparation
+					let minDist4 = obstacleRadius + cross.radius + minSeparation
 					if (dist4 < minDist4) {
 						validPosition = false
 					}
@@ -2292,8 +3806,83 @@ function handleCollisionWithSkull() {
 		
 		// Don't update savedObstacles - auto-reset should restore to original level state
 		
-		// Remove the skull
-		skull = null
+		// Remove the cross
+		cross = null
+	}
+}
+
+function handleCollisionWithLightning() {
+	if (!lightning) return
+	
+	let ballRadius = getBallRadius()
+	let dx = ball.xPos - lightning.xPos
+	let dy = ball.yPos - lightning.yPos
+	let distance = Math.hypot(dx, dy)
+	let collisionDistance = ballRadius + lightning.radius
+	
+	if (distance < collisionDistance && distance > 0) {
+		// Clear any existing special item effects
+		bushEffectActive = false
+		magnetEffectActive = false
+		ballStoppedByBushEffect = false
+		
+		// Ball hit the lightning - activate pass-through for the rest of the try
+		lightningEffectActive = true
+		
+		// Remove the lightning
+		lightning = null
+	}
+}
+
+function handleCollisionWithBush() {
+	if (!bush) return
+	
+	let ballRadius = getBallRadius()
+	let dx = ball.xPos - bush.xPos
+	let dy = ball.yPos - bush.yPos
+	let distance = Math.hypot(dx, dy)
+	let collisionDistance = ballRadius + bush.radius
+	
+	if (distance < collisionDistance && distance > 0) {
+		// Clear any existing special item effects
+		lightningEffectActive = false
+		magnetEffectActive = false
+		ballStoppedByBushEffect = false
+		
+		// Ball hit the bush - activate green border effect and stop the ball
+		bushEffectActive = true
+		ballStoppedByBushEffect = true
+		
+		// Stop the ball (user can fling again)
+		ball.xVel = 0
+		ball.yVel = 0
+		ball.isBeingFlung = false
+		
+		// Remove the bush
+		bush = null
+	}
+}
+
+function handleCollisionWithMagnet() {
+	if (!magnet) return
+	
+	let ballRadius = getBallRadius()
+	let dx = ball.xPos - magnet.xPos
+	let dy = ball.yPos - magnet.yPos
+	let distance = Math.hypot(dx, dy)
+	let collisionDistance = ballRadius + magnet.radius
+	
+	if (distance < collisionDistance && distance > 0) {
+		// Clear any existing special item effects
+		lightningEffectActive = false
+		bushEffectActive = false
+		ballStoppedByBushEffect = false
+		
+		// Ball hit the magnet - activate purple border and magnet effect for duration of try
+		magnetEffectActive = true
+		
+		// Remove the magnet
+		magnet = null
 	}
 }
 
@@ -2346,8 +3935,6 @@ function draw() {
 		// Ensure ball is fully visible after the intro
 		ball.fadeOpacity = 1.0
 	}
-
-	drawBall()
 	
 	// Update fade-in for targets
 	for (let i = 0; i < targetsRemaining.length; i++) {
@@ -2396,7 +3983,13 @@ function draw() {
 	drawObstacles()
 	drawStar()
 	drawSwitcher()
-	drawSkull()
+	drawCross()
+	drawLightning()
+	drawBush()
+	drawMagnet()
+	
+	// Draw ball after targets and obstacles so it appears on top
+	drawBall()
 	
 	// Update trophy fade-in
 	if (trophy && trophy.fadeInOpacity !== undefined && trophy.fadeInOpacity < 1.0) {
@@ -2574,7 +4167,254 @@ function drawBall() {
 	ctx.arc(x, y, radius, 0, 2 * Math.PI)
 	ctx.fillStyle = gradient
 	ctx.fill()
+	
+	// Draw orange border if lightning effect is active
+	if (lightningEffectActive) {
+		ctx.strokeStyle = "#ff8800"
+		ctx.lineWidth = radius * 0.15
+		ctx.beginPath()
+		ctx.arc(x, y, radius, 0, 2 * Math.PI)
+		ctx.stroke()
+	}
+	
+	// Draw green border if bush effect is active
+	if (bushEffectActive) {
+		ctx.strokeStyle = "#228833"
+		ctx.lineWidth = radius * 0.15
+		ctx.beginPath()
+		ctx.arc(x, y, radius, 0, 2 * Math.PI)
+		ctx.stroke()
+	}
+	
+	// Draw purple border if magnet effect is active
+	if (magnetEffectActive) {
+		ctx.strokeStyle = "#8844aa"
+		ctx.lineWidth = radius * 0.15
+		ctx.beginPath()
+		ctx.arc(x, y, radius, 0, 2 * Math.PI)
+		ctx.stroke()
+	}
 
+	ctx.restore()
+}
+
+function drawLightning() {
+	if (!lightning) return
+	
+	let radius = lightning.radius
+	let x = lightning.xPos
+	let y = lightning.yPos
+	
+	// Initialize fade-in if missing
+	if (lightning.fadeInOpacity === undefined || lightning.fadeInStartTime === undefined) {
+		lightning.fadeInOpacity = 0
+		lightning.fadeInStartTime = Date.now() + FADE_IN_DELAY
+	}
+	
+	// Update fade-in only if start time has passed
+	if (lightning.fadeInOpacity < 1.0 && lightning.fadeInStartTime <= Date.now()) {
+		let elapsed = Date.now() - lightning.fadeInStartTime
+		let fadeDuration = FADE_DURATION
+		lightning.fadeInOpacity = Math.min(1.0, elapsed / fadeDuration)
+	}
+	
+	let opacity = Math.max(0, Math.min(1.0, lightning.fadeInOpacity !== undefined ? lightning.fadeInOpacity : 0))
+	
+	ctx.save()
+	ctx.globalAlpha = opacity
+	
+	// Draw orange lightning bolt - zigzag pattern
+	ctx.strokeStyle = "#ff8800"
+	ctx.fillStyle = "#ff8800"
+	ctx.lineWidth = radius * 0.2
+	ctx.lineCap = "round"
+	ctx.lineJoin = "round"
+	
+	// Create a zigzag lightning bolt pattern
+	let boltWidth = radius * 0.6
+	let segmentLength = radius * 0.5
+	
+	ctx.beginPath()
+	// Start at top
+	ctx.moveTo(x, y - radius)
+	
+	// Draw zigzag pattern going down
+	let currentY = y - radius
+	let currentX = x
+	let direction = 1 // Alternates between left and right
+	
+	while (currentY < y + radius) {
+		currentX += direction * boltWidth * 0.3
+		currentY += segmentLength
+		ctx.lineTo(currentX, currentY)
+		direction *= -1
+	}
+	
+	// Add a final point at the bottom
+	ctx.lineTo(x, y + radius)
+	
+	ctx.stroke()
+	
+	// Add a thicker core for visibility
+	ctx.lineWidth = radius * 0.1
+	ctx.beginPath()
+	currentY = y - radius
+	currentX = x
+	direction = 1
+	
+	ctx.moveTo(x, y - radius)
+	while (currentY < y + radius) {
+		currentX += direction * boltWidth * 0.3
+		currentY += segmentLength
+		ctx.lineTo(currentX, currentY)
+		direction *= -1
+	}
+	ctx.lineTo(x, y + radius)
+	ctx.stroke()
+	
+	ctx.restore()
+}
+
+function drawBush() {
+	if (!bush) return
+	
+	let radius = bush.radius
+	let x = bush.xPos
+	let y = bush.yPos
+	
+	// Initialize fade-in if missing
+	if (bush.fadeInOpacity === undefined || bush.fadeInStartTime === undefined) {
+		bush.fadeInOpacity = 0
+		bush.fadeInStartTime = Date.now() + FADE_IN_DELAY
+	}
+	
+	// Update fade-in only if start time has passed
+	if (bush.fadeInOpacity < 1.0 && bush.fadeInStartTime <= Date.now()) {
+		let elapsed = Date.now() - bush.fadeInStartTime
+		let fadeDuration = FADE_DURATION
+		bush.fadeInOpacity = Math.min(1.0, elapsed / fadeDuration)
+	}
+	
+	let opacity = Math.max(0, Math.min(1.0, bush.fadeInOpacity !== undefined ? bush.fadeInOpacity : 0))
+	
+	ctx.save()
+	ctx.globalAlpha = opacity
+	
+	// Draw green bush - rounded shape with leafy texture
+	ctx.fillStyle = "#228833"
+	ctx.strokeStyle = "#115522"
+	ctx.lineWidth = 2
+	
+	// Draw main bush body (rounded shape)
+	ctx.beginPath()
+	ctx.arc(x, y, radius * 0.9, 0, 2 * Math.PI)
+	ctx.fill()
+	ctx.stroke()
+	
+	// Draw some leaf details
+	ctx.fillStyle = "#33aa44"
+	// Top leaf
+	ctx.beginPath()
+	ctx.ellipse(x, y - radius * 0.4, radius * 0.4, radius * 0.3, -0.3, 0, 2 * Math.PI)
+	ctx.fill()
+	// Left leaf
+	ctx.beginPath()
+	ctx.ellipse(x - radius * 0.4, y, radius * 0.3, radius * 0.4, 0.5, 0, 2 * Math.PI)
+	ctx.fill()
+	// Right leaf
+	ctx.beginPath()
+	ctx.ellipse(x + radius * 0.4, y, radius * 0.3, radius * 0.4, -0.5, 0, 2 * Math.PI)
+	ctx.fill()
+	// Bottom leaf
+	ctx.beginPath()
+	ctx.ellipse(x, y + radius * 0.4, radius * 0.4, radius * 0.3, 0.3, 0, 2 * Math.PI)
+	ctx.fill()
+	
+	ctx.restore()
+}
+
+function drawMagnet() {
+	if (!magnet) return
+	
+	let radius = magnet.radius
+	let x = magnet.xPos
+	let y = magnet.yPos
+	
+	// Initialize fade-in if missing
+	if (magnet.fadeInOpacity === undefined || magnet.fadeInStartTime === undefined) {
+		magnet.fadeInOpacity = 0
+		magnet.fadeInStartTime = Date.now() + FADE_IN_DELAY
+	}
+	
+	// Update fade-in only if start time has passed
+	if (magnet.fadeInOpacity < 1.0 && magnet.fadeInStartTime <= Date.now()) {
+		let elapsed = Date.now() - magnet.fadeInStartTime
+		let fadeDuration = FADE_DURATION
+		magnet.fadeInOpacity = Math.min(1.0, elapsed / fadeDuration)
+	}
+	
+	let opacity = Math.max(0, Math.min(1.0, magnet.fadeInOpacity !== undefined ? magnet.fadeInOpacity : 0))
+	
+	ctx.save()
+	ctx.globalAlpha = opacity
+	
+	// Draw classic horseshoe/U-shaped magnet
+	let magnetSize = radius * 1.2
+	let poleWidth = radius * 0.5
+	let poleHeight = radius * 0.8
+	let gapWidth = radius * 0.3
+	let cornerRadius = poleWidth * 0.2
+	
+	// Helper function to draw rounded rectangle
+	function drawRoundedRect(x, y, width, height, radius) {
+		ctx.beginPath()
+		ctx.moveTo(x + radius, y)
+		ctx.lineTo(x + width - radius, y)
+		ctx.quadraticCurveTo(x + width, y, x + width, y + radius)
+		ctx.lineTo(x + width, y + height - radius)
+		ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height)
+		ctx.lineTo(x + radius, y + height)
+		ctx.quadraticCurveTo(x, y + height, x, y + height - radius)
+		ctx.lineTo(x, y + radius)
+		ctx.quadraticCurveTo(x, y, x + radius, y)
+		ctx.closePath()
+	}
+	
+	// Left pole (N) - brighter purple
+	ctx.fillStyle = "#aa55bb"
+	drawRoundedRect(x - magnetSize / 2, y - poleHeight / 2, poleWidth, poleHeight, cornerRadius)
+	ctx.fill()
+	
+	// Right pole (S) - darker purple
+	ctx.fillStyle = "#7744aa"
+	drawRoundedRect(x + magnetSize / 2 - poleWidth, y - poleHeight / 2, poleWidth, poleHeight, cornerRadius)
+	ctx.fill()
+	
+	// Top connecting bar (U-shape top)
+	ctx.fillStyle = "#8844aa"
+	drawRoundedRect(x - magnetSize / 2, y - poleHeight / 2 - poleWidth * 0.3, magnetSize, poleWidth * 0.6, cornerRadius)
+	ctx.fill()
+	
+	// Draw gap between poles (the U opening) - use background color (black)
+	ctx.fillStyle = "#000000"
+	ctx.fillRect(x - gapWidth / 2, y - poleHeight / 2, gapWidth, poleHeight)
+	
+	// Border/stroke for entire magnet
+	ctx.strokeStyle = "#663388"
+	ctx.lineWidth = 2
+	
+	// Left pole border
+	drawRoundedRect(x - magnetSize / 2, y - poleHeight / 2, poleWidth, poleHeight, cornerRadius)
+	ctx.stroke()
+	
+	// Right pole border
+	drawRoundedRect(x + magnetSize / 2 - poleWidth, y - poleHeight / 2, poleWidth, poleHeight, cornerRadius)
+	ctx.stroke()
+	
+	// Top bar border
+	drawRoundedRect(x - magnetSize / 2, y - poleHeight / 2 - poleWidth * 0.3, magnetSize, poleWidth * 0.6, cornerRadius)
+	ctx.stroke()
+	
 	ctx.restore()
 }
 
@@ -2817,27 +4657,27 @@ function drawSwitcher() {
 	ctx.restore()
 }
 
-function drawSkull() {
-	if (!skull) return
+function drawCross() {
+	if (!cross) return
 	
-	let radius = skull.radius
-	let x = skull.xPos
-	let y = skull.yPos
+	let radius = cross.radius
+	let x = cross.xPos
+	let y = cross.yPos
 	
 	// Initialize fade-in if missing
-	if (skull.fadeInOpacity === undefined || skull.fadeInStartTime === undefined) {
-		skull.fadeInOpacity = 0
-		skull.fadeInStartTime = Date.now() + FADE_IN_DELAY
+	if (cross.fadeInOpacity === undefined || cross.fadeInStartTime === undefined) {
+		cross.fadeInOpacity = 0
+		cross.fadeInStartTime = Date.now() + FADE_IN_DELAY
 	}
 	
 	// Update fade-in only if start time has passed
-	if (skull.fadeInOpacity < 1.0 && skull.fadeInStartTime <= Date.now()) {
-		let elapsed = Date.now() - skull.fadeInStartTime
+	if (cross.fadeInOpacity < 1.0 && cross.fadeInStartTime <= Date.now()) {
+		let elapsed = Date.now() - cross.fadeInStartTime
 		let fadeDuration = FADE_DURATION
-		skull.fadeInOpacity = Math.min(1.0, elapsed / fadeDuration)
+		cross.fadeInOpacity = Math.min(1.0, elapsed / fadeDuration)
 	}
 	
-	let opacity = Math.max(0, Math.min(1.0, skull.fadeInOpacity !== undefined ? skull.fadeInOpacity : 0))
+	let opacity = Math.max(0, Math.min(1.0, cross.fadeInOpacity !== undefined ? cross.fadeInOpacity : 0))
 	
 	ctx.save()
 	ctx.globalAlpha = opacity
