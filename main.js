@@ -40,6 +40,7 @@ let star = null // White star that removes obstacles when hit (spawns starting l
 let switcher = null // White loop symbol that switches all red and blue balls when hit (spawns starting level 5, cycles through items)
 let cross = null // White cross/X mark that doubles obstacles when hit (spawns starting level 5, cycles through items)
 let lightning = null // Orange lightning bolt that gives pass-through (spawns starting level 5, cycles through items)
+let lightningImage = null // Image for lightning bolt
 let bush = null // Green bush that slows ball and gives green border (spawns starting level 5, cycles through items)
 let wormhole = null // Array of two purple wormholes that teleport ball between them (spawns starting level 5, cycles through items)
 let crossHitThisTry = false // Track if cross has been hit this try (idempotent)
@@ -111,6 +112,10 @@ function initializeGame() {
 	canvas = document.getElementById("canvas")
 	resizeCanvas()
 	ctx = canvas.getContext('2d')
+	
+	// Load lightning image
+	lightningImage = new Image()
+	lightningImage.src = 'images/lightning.png'
 	
 	// Start the very first level with a fade-in of the grey ball and score.
 	initialIntroActive = true
@@ -216,21 +221,25 @@ function generateLevel(isRetry = false, fewerSprites = false) {
 					placeWormholes()
 				}
 			} else {
+				// Determine number of items to spawn based on level
+				let itemsToSpawn = 1 // Levels 5-10
+				if (level >= 11 && level <= 20) {
+					itemsToSpawn = 2
+				} else if (level >= 21 && level <= 30) {
+					itemsToSpawn = 3
+				} else if (level >= 31 && level <= 40) {
+					itemsToSpawn = 4
+				} else if (level >= 41 && level <= 50) {
+					itemsToSpawn = 5
+				} else if (level >= 51) {
+					itemsToSpawn = 6
+				}
+				
 				// New level - check if all items have been shown once
 				if (availableSpecialItems.length === 0) {
 					// All items shown once - spawn items based on level
 					const allItems = ['star', 'switcher', 'cross', 'lightning', 'bush', 'wormhole']
 					const selectedItems = []
-					
-					// Determine number of items to spawn based on level
-					let itemsToSpawn = 3 // Levels 21-30
-					if (level >= 31 && level <= 40) {
-						itemsToSpawn = 4
-					} else if (level >= 41 && level <= 50) {
-						itemsToSpawn = 5
-					} else if (level > 50) {
-						itemsToSpawn = 6
-					}
 					
 					// Select random items (up to the number available)
 					let itemsToSelect = Math.min(itemsToSpawn, allItems.length)
@@ -260,25 +269,38 @@ function generateLevel(isRetry = false, fewerSprites = false) {
 						}
 					}
 				} else {
-					// Still in first cycle - spawn one item
-					const randomIndex = Math.floor(Math.random() * availableSpecialItems.length)
-					const selectedItem = availableSpecialItems[randomIndex]
-					availableSpecialItems.splice(randomIndex, 1)
-					currentLevelSpecialItem = selectedItem
+					// Still in first cycle - spawn items based on level
+					const selectedItems = []
 					
-					// Place the selected item
-					if (selectedItem === 'star') {
-						placeStar()
-					} else if (selectedItem === 'switcher') {
-						placeSwitcher()
-					} else if (selectedItem === 'cross') {
-						placeCross()
-					} else if (selectedItem === 'lightning') {
-						placeLightning()
-					} else if (selectedItem === 'bush') {
-						placeBush()
-					} else if (selectedItem === 'wormhole') {
-						placeWormholes()
+					// Select items from availableSpecialItems (up to itemsToSpawn)
+					let itemsToSelect = Math.min(itemsToSpawn, availableSpecialItems.length)
+					for (let i = 0; i < itemsToSelect; i++) {
+						const randomIndex = Math.floor(Math.random() * availableSpecialItems.length)
+						const selectedItem = availableSpecialItems[randomIndex]
+						selectedItems.push(selectedItem)
+						availableSpecialItems.splice(randomIndex, 1)
+					}
+					
+					currentLevelSpecialItems = selectedItems
+					if (selectedItems.length === 1) {
+						currentLevelSpecialItem = selectedItems[0]
+					}
+					
+					// Place the selected items
+					for (let item of selectedItems) {
+						if (item === 'star') {
+							placeStar()
+						} else if (item === 'switcher') {
+							placeSwitcher()
+						} else if (item === 'cross') {
+							placeCross()
+						} else if (item === 'lightning') {
+							placeLightning()
+						} else if (item === 'bush') {
+							placeBush()
+						} else if (item === 'wormhole') {
+							placeWormholes()
+						}
 					}
 				}
 			}
@@ -380,6 +402,10 @@ function generateLevel(isRetry = false, fewerSprites = false) {
 							placeCross()
 						} else if (item === 'lightning') {
 							placeLightning()
+						} else if (item === 'bush') {
+							placeBush()
+						} else if (item === 'wormhole') {
+							placeWormholes()
 						}
 					}
 				} else if (currentLevelSpecialItem) {
@@ -392,6 +418,10 @@ function generateLevel(isRetry = false, fewerSprites = false) {
 						placeCross()
 					} else if (currentLevelSpecialItem === 'lightning') {
 						placeLightning()
+					} else if (currentLevelSpecialItem === 'bush') {
+						placeBush()
+					} else if (currentLevelSpecialItem === 'wormhole') {
+						placeWormholes()
 					}
 				}
 			}
@@ -3688,8 +3718,8 @@ function handleCollisionWithStar() {
 			}
 		}
 		
-		// Remove the star
-		star = null
+		// Keep the star on the board after hit
+		// star = null
 		// Don't update savedObstacles - auto-reset should restore to original level state
 	}
 }
@@ -3739,8 +3769,8 @@ function handleCollisionWithSwitcher() {
 		
 		// Don't update savedTargets or savedObstacles - auto-reset should restore to original level state
 		
-		// Remove the switcher
-		switcher = null
+		// Keep the switcher on the board after hit
+		// switcher = null
 	}
 }
 
@@ -3872,8 +3902,8 @@ function handleCollisionWithCross() {
 		
 		// Don't update savedObstacles - auto-reset should restore to original level state
 		
-		// Remove the cross
-		cross = null
+		// Keep the cross on the board after hit
+		// cross = null
 	}
 }
 
@@ -4121,15 +4151,17 @@ function draw() {
 	
 	drawTargets()
 	drawObstacles()
-	drawStar()
-	drawSwitcher()
-	drawCross()
 	drawLightning()
 	drawBush()
 	drawWormholes()
 	
 	// Draw ball after targets and obstacles so it appears on top
 	drawBall()
+	
+	// Draw cross, star, and switcher after ball so they appear on top
+	drawStar()
+	drawSwitcher()
+	drawCross()
 	
 	// Update trophy fade-in
 	if (trophy && trophy.fadeInOpacity !== undefined && trophy.fadeInOpacity < 1.0) {
@@ -4355,54 +4387,35 @@ function drawLightning() {
 	ctx.save()
 	ctx.globalAlpha = opacity
 	
-	// Draw orange lightning bolt - zigzag pattern
-	ctx.strokeStyle = "#ff8800"
-	ctx.fillStyle = "#ff8800"
-	ctx.lineWidth = radius * 0.2
-	ctx.lineCap = "round"
-	ctx.lineJoin = "round"
-	
-	// Create a zigzag lightning bolt pattern
-	let boltWidth = radius * 0.6
-	let segmentLength = radius * 0.5
-	
-	ctx.beginPath()
-	// Start at top
-	ctx.moveTo(x, y - radius)
-	
-	// Draw zigzag pattern going down
-	let currentY = y - radius
-	let currentX = x
-	let direction = 1 // Alternates between left and right
-	
-	while (currentY < y + radius) {
-		currentX += direction * boltWidth * 0.3
-		currentY += segmentLength
-		ctx.lineTo(currentX, currentY)
-		direction *= -1
+	// Draw lightning bolt from image
+	if (lightningImage && lightningImage.complete) {
+		let size = radius * 12
+		let imgX = x - size / 2
+		let imgY = y - size / 2
+		
+		// Use temporary canvas to avoid affecting other sprites
+		let tempCanvas = document.createElement('canvas')
+		tempCanvas.width = size
+		tempCanvas.height = size
+		let tempCtx = tempCanvas.getContext('2d')
+		
+		// Draw image on temp canvas
+		tempCtx.drawImage(lightningImage, 0, 0, size, size)
+		
+		// Fill with solid orange (less red) to remove gradient
+		tempCtx.globalCompositeOperation = 'source-atop'
+		tempCtx.fillStyle = '#bb6622' // Darker orange, less red
+		tempCtx.fillRect(0, 0, size, size)
+		
+		// Draw the processed image to main canvas
+		ctx.drawImage(tempCanvas, imgX, imgY)
+	} else {
+		// Fallback: draw orange circle if image not loaded yet
+		ctx.fillStyle = "#ff8800"
+		ctx.beginPath()
+		ctx.arc(x, y, radius, 0, 2 * Math.PI)
+		ctx.fill()
 	}
-	
-	// Add a final point at the bottom
-	ctx.lineTo(x, y + radius)
-	
-	ctx.stroke()
-	
-	// Add a thicker core for visibility
-	ctx.lineWidth = radius * 0.1
-	ctx.beginPath()
-	currentY = y - radius
-	currentX = x
-	direction = 1
-	
-	ctx.moveTo(x, y - radius)
-	while (currentY < y + radius) {
-		currentX += direction * boltWidth * 0.3
-		currentY += segmentLength
-		ctx.lineTo(currentX, currentY)
-		direction *= -1
-	}
-	ctx.lineTo(x, y + radius)
-	ctx.stroke()
 	
 	ctx.restore()
 }
@@ -4433,33 +4446,25 @@ function drawBush() {
 	ctx.globalAlpha = opacity
 	
 	// Draw green bush - rounded shape with leafy texture
-	ctx.fillStyle = "#228833"
-	ctx.strokeStyle = "#115522"
-	ctx.lineWidth = 2
+	// Removed dark green background circle
 	
-	// Draw main bush body (rounded shape)
-	ctx.beginPath()
-	ctx.arc(x, y, radius * 0.9, 0, 2 * Math.PI)
-	ctx.fill()
-	ctx.stroke()
-	
-	// Draw some leaf details
+	// Draw some leaf details (slightly larger so bush silhouette matches ball size)
 	ctx.fillStyle = "#33aa44"
 	// Top leaf
 	ctx.beginPath()
-	ctx.ellipse(x, y - radius * 0.4, radius * 0.4, radius * 0.3, -0.3, 0, 2 * Math.PI)
+	ctx.ellipse(x, y - radius * 0.5, radius * 0.5, radius * 0.4, -0.3, 0, 2 * Math.PI)
 	ctx.fill()
 	// Left leaf
 	ctx.beginPath()
-	ctx.ellipse(x - radius * 0.4, y, radius * 0.3, radius * 0.4, 0.5, 0, 2 * Math.PI)
+	ctx.ellipse(x - radius * 0.55, y, radius * 0.4, radius * 0.5, 0.5, 0, 2 * Math.PI)
 	ctx.fill()
 	// Right leaf
 	ctx.beginPath()
-	ctx.ellipse(x + radius * 0.4, y, radius * 0.3, radius * 0.4, -0.5, 0, 2 * Math.PI)
+	ctx.ellipse(x + radius * 0.55, y, radius * 0.4, radius * 0.5, -0.5, 0, 2 * Math.PI)
 	ctx.fill()
 	// Bottom leaf
 	ctx.beginPath()
-	ctx.ellipse(x, y + radius * 0.4, radius * 0.4, radius * 0.3, 0.3, 0, 2 * Math.PI)
+	ctx.ellipse(x, y + radius * 0.5, radius * 0.5, radius * 0.4, 0.3, 0, 2 * Math.PI)
 	ctx.fill()
 	
 	ctx.restore()
@@ -4468,7 +4473,10 @@ function drawBush() {
 function drawWormholes() {
 	if (!wormhole || wormhole.length !== 2) return
 	
-	// Draw both wormholes
+	// Store positions and opacities for drawing connecting line
+	let positions = []
+	
+	// Draw both wormholes as acute triangles
 	for (let i = 0; i < wormhole.length; i++) {
 		let wh = wormhole[i]
 		if (!wh) continue
@@ -4492,43 +4500,45 @@ function drawWormholes() {
 		
 		let opacity = Math.max(0, Math.min(1.0, wh.fadeInOpacity !== undefined ? wh.fadeInOpacity : 0))
 		
+		// Store position for connecting line
+		positions.push({ x, y, opacity })
+		
+		// Find the other wormhole to determine direction
+		let otherWh = wormhole[1 - i]
+		if (!otherWh) continue
+		
+		// Calculate angle from this wormhole to the other
+		let dx = otherWh.xPos - x
+		let dy = otherWh.yPos - y
+		let angle = Math.atan2(dy, dx)
+		
 		ctx.save()
 		ctx.globalAlpha = opacity
+		ctx.translate(x, y)
+		ctx.rotate(angle)
 		
-		// Draw wormhole as a purple portal/ring
-		// Outer ring - darker purple
+		// Draw acute triangle pointing toward the other wormhole
+		// Tip of triangle (sharpest angle) points in positive x direction (toward other wormhole)
+		// Base is perpendicular to that direction
+		let tipX = radius * 1.2 // Tip extends forward (larger)
+		let baseY = radius * 0.7 // Half height of base (wider base for more pronounced angle ratio)
+		let baseX = -radius * 0.4 // Base x position
+		
 		ctx.beginPath()
-		ctx.arc(x, y, radius, 0, 2 * Math.PI)
+		ctx.moveTo(tipX, 0) // Tip pointing toward other wormhole
+		ctx.lineTo(baseX, -baseY) // Left base corner
+		ctx.lineTo(baseX, baseY) // Right base corner
+		ctx.closePath()
 		ctx.fillStyle = "#663388"
 		ctx.fill()
-		
-		// Middle ring - medium purple
-		ctx.beginPath()
-		ctx.arc(x, y, radius * 0.85, 0, 2 * Math.PI)
-		ctx.fillStyle = "#8844aa"
-		ctx.fill()
-		
-		// Inner ring - brighter purple
-		ctx.beginPath()
-		ctx.arc(x, y, radius * 0.7, 0, 2 * Math.PI)
-		ctx.fillStyle = "#aa55bb"
-		ctx.fill()
-		
-		// Center - black (portal opening)
-		ctx.beginPath()
-		ctx.arc(x, y, radius * 0.5, 0, 2 * Math.PI)
-		ctx.fillStyle = "#000000"
-		ctx.fill()
-		
-		// Outer border
-		ctx.beginPath()
-		ctx.arc(x, y, radius, 0, 2 * Math.PI)
 		ctx.strokeStyle = "#8844aa"
 		ctx.lineWidth = 2
 		ctx.stroke()
 		
 		ctx.restore()
 	}
+	
+	// Connecting line removed
 }
 
 function drawTargets() {
@@ -4701,9 +4711,10 @@ function drawSwitcher() {
 	ctx.fill()
 	
 	// Draw two thick, curved white arrows forming an almost complete circle with gaps
-	let circleRadius = radius * 0.5 // Radius of the circular path
-	let arrowThickness = radius * 0.25 // Thickness of arrow body (thick and bold)
-	let arrowHeadSize = radius * 0.4 // Size of arrowhead (larger for more pronounced triangle)
+	// Make the visible arrows larger so the switcher silhouette matches the ball size
+	let circleRadius = radius * 0.7 // Larger circular path so arrows extend closer to edge
+	let arrowThickness = radius * 0.3 // Slightly thicker arrow body
+	let arrowHeadSize = radius * 0.5 // Larger arrowhead for stronger visual
 	let gapSize = Math.PI * 0.35 // Gap between arrows (larger gap for better visibility)
 	let arrowArcLength = (Math.PI * 2 - gapSize * 2) / 2 // Each arrow covers half the remaining circle
 	
