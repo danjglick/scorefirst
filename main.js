@@ -1814,8 +1814,7 @@ function handleTouchstart(e) {
 	
 	if (touch1.xPos >= scoreLeft && touch1.xPos <= scoreRight &&
 	    touch1.yPos >= scoreTop && touch1.yPos <= scoreBottom) {
-		// Clicked on score - instantly advance to next level
-		completionScore++
+		// Clicked on score - instantly advance to next level (without incrementing score)
 		generateLevel()
 		return
 	}
