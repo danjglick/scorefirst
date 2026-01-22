@@ -6063,7 +6063,7 @@ function drawLevel3SwapHint() {
 	
 	// Generate random position if not set yet
 	if (!level3HintPosition) {
-		level3HintPosition = getRandomHintPosition()
+		level3HintPosition = getTutorialStep1Position()
 	}
 	
 	if (!level3HintPosition) return
@@ -6130,7 +6130,7 @@ function drawLevel2Hint() {
 	
 	// Generate random position if not set yet
 	if (!level2HintPosition) {
-		level2HintPosition = getRandomHintPosition()
+		level2HintPosition = getTutorialStep1Position()
 	}
 	
 	if (!level2HintPosition) return
@@ -6196,7 +6196,7 @@ function drawLevel1Hint() {
 	
 	// Generate random position if not set yet
 	if (!level1HintPosition) {
-		level1HintPosition = getRandomHintPosition()
+		level1HintPosition = getTutorialStep1Position()
 	}
 	
 	if (!level1HintPosition) return
@@ -6256,7 +6256,7 @@ function drawLevel10Hint() {
 	
 	// Generate random position if not set yet
 	if (!level10HintPosition) {
-		level10HintPosition = getRandomHintPosition()
+		level10HintPosition = getTutorialStep1Position()
 	}
 	
 	if (!level10HintPosition) return
@@ -6318,6 +6318,36 @@ function drawLevel10Hint() {
 }
 
 // Get a random position for the hint that avoids sprites and edges
+function getTutorialStep1Position() {
+	// Calculate the same way tutorial step 1 does, but 1 ball radius higher
+	let padding = 40
+	let textShadowBuffer = 20
+	let measuredWidth = 300 // Approximate text width
+	let measuredHeight = 30 // Approximate text height
+	let textWidth = measuredWidth + textShadowBuffer * 2
+	let textHeight = measuredHeight + textShadowBuffer * 2
+	let textHalfWidth = textWidth / 2
+	let textHalfHeight = textHeight / 2
+	
+	// Base centered position
+	let xPos = canvas.width / 2
+	let yPos = canvas.height * 0.5
+	
+	// Position the text above the ball (1 ball radius higher than tutorial step 1)
+	let ballRadius = getBallRadius()
+	let paddingY = padding
+	let topExclusionY = canvas.height * 0.2
+	// Place the text four ball-radii (2 diameters) above the ball (1 radius higher than tutorial step 1).
+	let baseY = (ball?.yPos ?? (canvas.height - paddingY - textHalfHeight)) - (4 * ballRadius)
+	// Clamp inside safe region.
+	yPos = Math.max(
+		topExclusionY + textHalfHeight + paddingY,
+		Math.min(baseY, canvas.height - paddingY - textHalfHeight)
+	)
+	
+	return { x: xPos, y: yPos }
+}
+
 function getRandomHintPosition() {
 	let padding = 80 // Distance from edges
 	let spriteBuffer = 120 // Distance from sprites (increased for more spacing)
