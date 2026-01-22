@@ -134,6 +134,13 @@ let doorFadeOutStartTime = null // Track when door fade-out started
 let hasExecutedSwap = false
 let level3HintPosition = null // Random position for the swap hint on level 3
 let level3HintFadeInStartTime = null // When the hint should start fading in
+let level3HintFadeOutStartTime = null // When the hint should start fading out
+let level2HintPosition = null // Random position for the level 2 hint
+let level2HintFadeInStartTime = null // When the level 2 hint should start fading in
+let level2HintFadeOutStartTime = null // When the hint should start fading out
+let level1HintPosition = null // Random position for the level 1 hint
+let level1BallFadeInTime = null // When the ball faded in on level 1
+let level1HintFadeOutStartTime = null // When the hint should start fading out
 
 // Victory drawing - user can draw on screen when trophy is displayed
 let victoryDrawingStrokes = [] // Array of completed strokes, each stroke is an array of {x, y} points
@@ -174,6 +181,15 @@ function generateLevel(isRetry = false, fewerSprites = false) {
 		// Reset level 3 hint position so it gets recalculated for the new level
 		level3HintPosition = null
 		level3HintFadeInStartTime = null // Reset fade-in start time for new level
+		level3HintFadeOutStartTime = null // Reset fade-out start time for new level
+		// Reset level 2 hint position so it gets recalculated for the new level
+		level2HintPosition = null
+		level2HintFadeInStartTime = null // Reset fade-in start time for new level
+		level2HintFadeOutStartTime = null // Reset fade-out start time for new level
+		// Reset level 1 hint position so it gets recalculated for the new level
+		level1HintPosition = null
+		level1BallFadeInTime = null // Reset ball fade-in time for new level
+		level1HintFadeOutStartTime = null // Reset fade-out start time for new level
 	}
 	
 	// Check tries before resetting - if retrying with tries > 0, restore saved positions
@@ -3484,6 +3500,11 @@ function moveBall() {
 			ball.xPos = autoResetBallToX
 			ball.yPos = autoResetBallToY
 			autoResetActive = false
+			
+			// Start level 2 hint fade-in when auto-reset completes for try 4 (tries == 3)
+			if (level === 2 && tries === 3 && level2HintFadeInStartTime === null) {
+				level2HintFadeInStartTime = Date.now()
+			}
 		}
 		return
 	}
@@ -3746,6 +3767,18 @@ function handleCollisionWithTarget() {
 			if (wasLastTarget) {
 				// This shot successfully cleared all targets
 				shotActive = false
+				
+				// Start fading out all hints when last target is hit
+				let fadeOutTime = Date.now()
+				if (level === 1 && level1HintFadeOutStartTime === null) {
+					level1HintFadeOutStartTime = fadeOutTime
+				}
+				if (level === 2 && level2HintFadeOutStartTime === null) {
+					level2HintFadeOutStartTime = fadeOutTime
+				}
+				if (level === 3 && level3HintFadeOutStartTime === null) {
+					level3HintFadeOutStartTime = fadeOutTime
+				}
 				
 				// Remember where the last target was collected so we can place the trophy there
 				lastTargetX = targetX
@@ -4374,6 +4407,10 @@ function draw() {
 			// Clear fade-in start time once fade-in is complete
 			if (t >= 1.0) {
 				ball.fadeInStartTime = undefined
+				// Track when ball faded in on level 1 (for hint timing)
+				if (level === 1 && level1BallFadeInTime === null) {
+					level1BallFadeInTime = Date.now()
+				}
 				// Start fade-out for starting door when ball fade-in is complete
 				if (startingDoor && startingDoor.fadeOutStartTime === null) {
 					startingDoor.fadeOutStartTime = Date.now()
@@ -4508,6 +4545,12 @@ function draw() {
 	
 	// Draw level 3 swap hint if user hasn't swapped yet
 	drawLevel3SwapHint()
+	
+	// Draw level 2 hint if tries > 2
+	drawLevel2Hint()
+	
+	// Draw level 1 hint if 10 seconds passed and tries == 0
+	drawLevel1Hint()
 }
 
 function createFireworks(x, y, color = "blue") {
@@ -5873,21 +5916,31 @@ function drawLevel3SwapHint() {
 	if (!level3HintPosition) return
 	
 	// Calculate fade-in opacity
-	let opacity = 1.0
+	let fadeInOpacity = 1.0
 	if (level3HintFadeInStartTime !== null && level3HintFadeInStartTime > Date.now()) {
 		// Not time to fade in yet
-		opacity = 0.0
+		fadeInOpacity = 0.0
 	} else if (level3HintFadeInStartTime !== null) {
 		// Fade in
 		let elapsed = Date.now() - level3HintFadeInStartTime
 		let fadeDuration = FADE_DURATION // 1 second
-		opacity = Math.min(1.0, elapsed / fadeDuration)
+		fadeInOpacity = Math.min(1.0, elapsed / fadeDuration)
 	} else {
 		// If door hasn't faded out yet, don't show hint
 		if (startingDoor) {
-			opacity = 0.0
+			fadeInOpacity = 0.0
 		}
 	}
+	
+	// Calculate fade-out opacity
+	let fadeOutOpacity = 1.0
+	if (level3HintFadeOutStartTime !== null) {
+		let elapsed = Date.now() - level3HintFadeOutStartTime
+		let fadeDuration = FADE_DURATION // 1 second
+		fadeOutOpacity = Math.max(0.0, 1.0 - (elapsed / fadeDuration))
+	}
+	
+	let opacity = fadeInOpacity * fadeOutOpacity
 	
 	if (opacity <= 0) return // Don't draw if invisible
 	
@@ -5918,17 +5971,151 @@ function drawLevel3SwapHint() {
 	ctx.restore()
 }
 
+// Draw level 2 hint if tries == 3 and auto-reset has completed
+function drawLevel2Hint() {
+	if (level !== 2 || tries !== 3) return
+	
+	// Generate random position if not set yet
+	if (!level2HintPosition) {
+		level2HintPosition = getRandomHintPosition()
+	}
+	
+	if (!level2HintPosition) return
+	
+	// Calculate fade-in opacity
+	let fadeInOpacity = 1.0
+	if (level2HintFadeInStartTime !== null) {
+		// Fade in
+		let elapsed = Date.now() - level2HintFadeInStartTime
+		let fadeDuration = FADE_DURATION // 1 second
+		fadeInOpacity = Math.min(1.0, elapsed / fadeDuration)
+	} else {
+		// Not time to fade in yet (waiting for auto-reset to complete)
+		fadeInOpacity = 0.0
+	}
+	
+	// Calculate fade-out opacity
+	let fadeOutOpacity = 1.0
+	if (level2HintFadeOutStartTime !== null) {
+		let elapsed = Date.now() - level2HintFadeOutStartTime
+		let fadeDuration = FADE_DURATION // 1 second
+		fadeOutOpacity = Math.max(0.0, 1.0 - (elapsed / fadeDuration))
+	}
+	
+	let opacity = fadeInOpacity * fadeOutOpacity
+	
+	if (opacity <= 0) return // Don't draw if invisible
+	
+	ctx.save()
+	ctx.font = "24px Arial"
+	ctx.textAlign = "center"
+	ctx.textBaseline = "middle"
+	ctx.globalAlpha = opacity
+	
+	let line1 = "hint: collect all the trophies"
+	let line2 = "in one shot to move on"
+	let x = level2HintPosition.x
+	let y = level2HintPosition.y
+	let lineHeight = 28 // Spacing between lines
+	
+	// Draw text shadow for readability
+	ctx.globalAlpha = opacity * 0.5
+	ctx.fillStyle = "black"
+	ctx.fillText(line1, x + 1, y - lineHeight / 2 + 1)
+	ctx.fillText(line2, x + 1, y + lineHeight / 2 + 1)
+	
+	// Draw main text in white
+	ctx.globalAlpha = opacity
+	ctx.fillStyle = "white"
+	ctx.fillText(line1, x, y - lineHeight / 2)
+	ctx.fillText(line2, x, y + lineHeight / 2)
+	
+	ctx.restore()
+}
+
+// Draw level 1 hint if 10 seconds have passed since ball faded in
+function drawLevel1Hint() {
+	if (level !== 1 || level1BallFadeInTime === null) return
+	
+	// Check if 10 seconds have passed since ball faded in
+	let timeSinceFadeIn = Date.now() - level1BallFadeInTime
+	if (timeSinceFadeIn < 10000) return // Not 10 seconds yet
+	
+	// Generate random position if not set yet
+	if (!level1HintPosition) {
+		level1HintPosition = getRandomHintPosition()
+	}
+	
+	if (!level1HintPosition) return
+	
+	// Calculate fade-in opacity (fade in over 1 second after the 10 second mark)
+	let fadeInOpacity = 1.0
+	let timeSinceTrigger = timeSinceFadeIn - 10000
+	if (timeSinceTrigger < 0) {
+		fadeInOpacity = 0.0
+	} else {
+		let fadeDuration = FADE_DURATION // 1 second
+		fadeInOpacity = Math.min(1.0, timeSinceTrigger / fadeDuration)
+	}
+	
+	// Calculate fade-out opacity
+	let fadeOutOpacity = 1.0
+	if (level1HintFadeOutStartTime !== null) {
+		let elapsed = Date.now() - level1HintFadeOutStartTime
+		let fadeDuration = FADE_DURATION // 1 second
+		fadeOutOpacity = Math.max(0.0, 1.0 - (elapsed / fadeDuration))
+	}
+	
+	let opacity = fadeInOpacity * fadeOutOpacity
+	
+	if (opacity <= 0) return // Don't draw if invisible
+	
+	ctx.save()
+	ctx.font = "24px Arial"
+	ctx.textAlign = "center"
+	ctx.textBaseline = "middle"
+	ctx.globalAlpha = opacity
+	
+	let line1 = "hint: fling the smiley face"
+	let line2 = "at the trophy"
+	let x = level1HintPosition.x
+	let y = level1HintPosition.y
+	let lineHeight = 28 // Spacing between lines
+	
+	// Draw text shadow for readability
+	ctx.globalAlpha = opacity * 0.5
+	ctx.fillStyle = "black"
+	ctx.fillText(line1, x + 1, y - lineHeight / 2 + 1)
+	ctx.fillText(line2, x + 1, y + lineHeight / 2 + 1)
+	
+	// Draw main text in white
+	ctx.globalAlpha = opacity
+	ctx.fillStyle = "white"
+	ctx.fillText(line1, x, y - lineHeight / 2)
+	ctx.fillText(line2, x, y + lineHeight / 2)
+	
+	ctx.restore()
+}
+
 // Get a random position for the hint that avoids sprites and edges
 function getRandomHintPosition() {
 	let padding = 80 // Distance from edges
-	let spriteBuffer = 60 // Distance from sprites
+	let spriteBuffer = 120 // Distance from sprites (increased for more spacing)
 	
 	// Measure text width to avoid placing it where it would go off screen
+	// Use the wider of all possible hint texts (level 1, 2, or 3)
 	ctx.save()
 	ctx.font = "24px Arial"
-	let line1Width = ctx.measureText("hint: swap any two items").width
-	let line2Width = ctx.measureText("by tapping them").width
-	let textWidth = Math.max(line1Width, line2Width) // Use the wider line
+	let level3Line1Width = ctx.measureText("hint: swap any two items").width
+	let level3Line2Width = ctx.measureText("by tapping them").width
+	let level2Line1Width = ctx.measureText("hint: collect all the trophies").width
+	let level2Line2Width = ctx.measureText("in one shot to move on").width
+	let level1Line1Width = ctx.measureText("hint: fling the smiley face").width
+	let level1Line2Width = ctx.measureText("at the trophy").width
+	let maxLevel3Width = Math.max(level3Line1Width, level3Line2Width)
+	let maxLevel2Width = Math.max(level2Line1Width, level2Line2Width)
+	let maxLevel1Width = Math.max(level1Line1Width, level1Line2Width)
+	let textWidth = Math.max(maxLevel3Width, maxLevel2Width, maxLevel1Width) // Use the widest line
 	ctx.restore()
 	
 	let minX = padding + textWidth / 2
