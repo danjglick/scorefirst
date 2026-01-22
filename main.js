@@ -130,6 +130,10 @@ let ballHiddenForNextLevel = false // Track if ball is hidden waiting for next l
 let ballFadeOutStartTime = null // Track when ball fade-out started
 let doorFadeOutStartTime = null // Track when door fade-out started
 
+// Track if user has ever executed a swap (for level 3 hint)
+let hasExecutedSwap = false
+let level3HintPosition = null // Random position for the swap hint on level 3
+let level3HintFadeInStartTime = null // When the hint should start fading in
 
 // Victory drawing - user can draw on screen when trophy is displayed
 let victoryDrawingStrokes = [] // Array of completed strokes, each stroke is an array of {x, y} points
@@ -167,6 +171,9 @@ function generateLevel(isRetry = false, fewerSprites = false) {
 	// Reset shotActive for new levels (not retries) to prevent auto-reset from triggering
 	if (!isRetry) {
 		shotActive = false
+		// Reset level 3 hint position so it gets recalculated for the new level
+		level3HintPosition = null
+		level3HintFadeInStartTime = null // Reset fade-in start time for new level
 	}
 	
 	// Check tries before resetting - if retrying with tries > 0, restore saved positions
@@ -669,6 +676,8 @@ function loopGame() { // MAIN GAME LOOP
 
 // Start a swap animation for a sprite
 function startSwapAnimation(sprite, fromX, fromY, toX, toY) {
+	// Mark that user has executed a swap (for level 3 hint)
+	hasExecutedSwap = true
 	// Remove any existing animation for this sprite
 	swapAnimations = swapAnimations.filter(a => a.sprite !== sprite)
 	// Add new animation
@@ -4392,6 +4401,10 @@ function draw() {
 			
 			// Clear starting door after fade-out completes
 			if (elapsed >= fadeDuration) {
+				// Start hint fade-in 1 second after door fades out (only on level 3)
+				if (level === 3 && !hasExecutedSwap && level3HintFadeInStartTime === null) {
+					level3HintFadeInStartTime = Date.now() + 1000
+				}
 				startingDoor = null
 			}
 		} else if (startingDoor.fadeInStartTime !== undefined && startingDoor.fadeInStartTime <= Date.now()) {
@@ -4492,6 +4505,9 @@ function draw() {
 	
 	// Draw victory drawing (user can draw when trophy is hit)
 	drawVictoryDrawing()
+	
+	// Draw level 3 swap hint if user hasn't swapped yet
+	drawLevel3SwapHint()
 }
 
 function createFireworks(x, y, color = "blue") {
@@ -5843,6 +5859,150 @@ function drawVictoryDrawing() {
 	}
 	
 	ctx.restore()
+}
+
+// Draw swap hint on level 3 if user hasn't executed a swap yet
+function drawLevel3SwapHint() {
+	if (level !== 3 || hasExecutedSwap) return
+	
+	// Generate random position if not set yet
+	if (!level3HintPosition) {
+		level3HintPosition = getRandomHintPosition()
+	}
+	
+	if (!level3HintPosition) return
+	
+	// Calculate fade-in opacity
+	let opacity = 1.0
+	if (level3HintFadeInStartTime !== null && level3HintFadeInStartTime > Date.now()) {
+		// Not time to fade in yet
+		opacity = 0.0
+	} else if (level3HintFadeInStartTime !== null) {
+		// Fade in
+		let elapsed = Date.now() - level3HintFadeInStartTime
+		let fadeDuration = FADE_DURATION // 1 second
+		opacity = Math.min(1.0, elapsed / fadeDuration)
+	} else {
+		// If door hasn't faded out yet, don't show hint
+		if (startingDoor) {
+			opacity = 0.0
+		}
+	}
+	
+	if (opacity <= 0) return // Don't draw if invisible
+	
+	ctx.save()
+	ctx.font = "24px Arial"
+	ctx.textAlign = "center"
+	ctx.textBaseline = "middle"
+	ctx.globalAlpha = opacity
+	
+	let line1 = "hint: swap any two items"
+	let line2 = "by tapping them"
+	let x = level3HintPosition.x
+	let y = level3HintPosition.y
+	let lineHeight = 28 // Spacing between lines
+	
+	// Draw text shadow for readability
+	ctx.globalAlpha = opacity * 0.5
+	ctx.fillStyle = "black"
+	ctx.fillText(line1, x + 1, y - lineHeight / 2 + 1)
+	ctx.fillText(line2, x + 1, y + lineHeight / 2 + 1)
+	
+	// Draw main text in white
+	ctx.globalAlpha = opacity
+	ctx.fillStyle = "white"
+	ctx.fillText(line1, x, y - lineHeight / 2)
+	ctx.fillText(line2, x, y + lineHeight / 2)
+	
+	ctx.restore()
+}
+
+// Get a random position for the hint that avoids sprites and edges
+function getRandomHintPosition() {
+	let padding = 80 // Distance from edges
+	let spriteBuffer = 60 // Distance from sprites
+	
+	// Measure text width to avoid placing it where it would go off screen
+	ctx.save()
+	ctx.font = "24px Arial"
+	let line1Width = ctx.measureText("hint: swap any two items").width
+	let line2Width = ctx.measureText("by tapping them").width
+	let textWidth = Math.max(line1Width, line2Width) // Use the wider line
+	ctx.restore()
+	
+	let minX = padding + textWidth / 2
+	let maxX = canvas.width - padding - textWidth / 2
+	let minY = padding
+	let maxY = canvas.height - padding
+	
+	// Try to find a valid position (max 50 attempts)
+	for (let attempt = 0; attempt < 50; attempt++) {
+		let x = minX + Math.random() * (maxX - minX)
+		let y = minY + Math.random() * (maxY - minY)
+		
+		// Check distance from all sprites
+		let tooClose = false
+		
+		// Check ball
+		if (ball) {
+			let dist = Math.hypot(x - ball.xPos, y - ball.yPos)
+			if (dist < spriteBuffer + getBallRadius()) tooClose = true
+		}
+		
+		// Check targets
+		for (let target of targetsRemaining) {
+			let dist = Math.hypot(x - target.xPos, y - target.yPos)
+			if (dist < spriteBuffer + getTargetRadius()) tooClose = true
+		}
+		
+		// Check obstacles
+		for (let obstacle of obstacles) {
+			let dist = Math.hypot(x - obstacle.xPos, y - obstacle.yPos)
+			if (dist < spriteBuffer + obstacle.radius) tooClose = true
+		}
+		
+		// Check special items
+		if (star) {
+			let dist = Math.hypot(x - star.xPos, y - star.yPos)
+			if (dist < spriteBuffer + star.radius) tooClose = true
+		}
+		if (switcher) {
+			let dist = Math.hypot(x - switcher.xPos, y - switcher.yPos)
+			if (dist < spriteBuffer + switcher.radius) tooClose = true
+		}
+		if (cross) {
+			let dist = Math.hypot(x - cross.xPos, y - cross.yPos)
+			if (dist < spriteBuffer + cross.radius) tooClose = true
+		}
+		if (lightning) {
+			let dist = Math.hypot(x - lightning.xPos, y - lightning.yPos)
+			if (dist < spriteBuffer + lightning.radius) tooClose = true
+		}
+		if (bush) {
+			let dist = Math.hypot(x - bush.xPos, y - bush.yPos)
+			if (dist < spriteBuffer + bush.radius) tooClose = true
+		}
+		if (wormhole) {
+			for (let wh of wormhole) {
+				if (wh) {
+					let dist = Math.hypot(x - wh.xPos, y - wh.yPos)
+					if (dist < spriteBuffer + wh.radius) tooClose = true
+				}
+			}
+		}
+		if (trophy) {
+			let dist = Math.hypot(x - trophy.xPos, y - trophy.yPos)
+			if (dist < spriteBuffer + trophy.radius) tooClose = true
+		}
+		
+		if (!tooClose) {
+			return { x, y }
+		}
+	}
+	
+	// Fallback: return center of screen
+	return { x: canvas.width / 2, y: canvas.height / 2 }
 }
 
 function getScoreCenter() {
