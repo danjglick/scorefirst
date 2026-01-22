@@ -116,6 +116,7 @@ let levelScore = 0
 let totalScore = 0
 let pointsThisLevel = 0 // Track points gained during current level for retry
 let completionScore = 0 // Score for completing levels (clearing all targets)
+let savedCompletionScore = 0 // Score at start of level (for auto-reset)
 let scoreIncrementDisplay = null // { opacity: 1.0, timeLeft: 1.0, amount: 1 } for showing +1 indicator
 let level = 0
 let gameLoopTimeout = null
@@ -128,6 +129,12 @@ let pendingNextLevel = false
 let ballHiddenForNextLevel = false // Track if ball is hidden waiting for next level to start
 let ballFadeOutStartTime = null // Track when ball fade-out started
 let doorFadeOutStartTime = null // Track when door fade-out started
+
+
+// Victory drawing - user can draw on screen when trophy is displayed
+let victoryDrawingStrokes = [] // Array of completed strokes, each stroke is an array of {x, y} points
+let currentVictoryStroke = null // Current stroke being drawn (array of points)
+let victoryTouchPos = null // Current touch position for electric line to ball
 
 function initializeGame() {
 	canvas = document.getElementById("canvas")
@@ -350,6 +357,7 @@ function generateLevel(isRetry = false, fewerSprites = false) {
 		savedLightning = lightning ? JSON.parse(JSON.stringify(lightning)) : null
 		savedBush = bush ? JSON.parse(JSON.stringify(bush)) : null
 		savedWormhole = wormhole ? JSON.parse(JSON.stringify(wormhole)) : null
+		savedCompletionScore = completionScore
 	} else {
 		// Normal retry - restore obstacles and targets for current level
 		// Level stays the same, so tutorial stays the same
@@ -499,6 +507,7 @@ function generateLevel(isRetry = false, fewerSprites = false) {
 			savedSwitcher = switcher ? JSON.parse(JSON.stringify(switcher)) : null
 			savedCross = cross ? JSON.parse(JSON.stringify(cross)) : null
 			savedLightning = lightning ? JSON.parse(JSON.stringify(lightning)) : null
+			savedCompletionScore = completionScore
 		}
 	}
 	targetsRemaining = JSON.parse(JSON.stringify(targets))
@@ -514,6 +523,10 @@ function generateLevel(isRetry = false, fewerSprites = false) {
 		}
 	}
 	fireworks = []
+	// Reset victory drawing for new level
+	victoryDrawingStrokes = []
+	currentVictoryStroke = null
+	victoryTouchPos = null
 	// Don't reset star here - it's placed after obstacles/ball, so reset it before placement
 	trophy = null // Reset trophy for new level
 	// Don't reset startingDoor here - it only appears on new levels, not retries
@@ -1737,6 +1750,23 @@ function handleTouchstart(e) {
 	ballTappedForSelection = false // Reset flag
 	touchMoved = false // Reset flag
 	
+	// Victory drawing mode - when trophy appears, allow user to draw freely
+	// But if touching near the ball or trophy, allow flinging/swapping instead
+	if (trophy) {
+		let ballRadius = getBallRadius()
+		let ballDistance = Math.hypot(touch1.xPos - ball.xPos, touch1.yPos - ball.yPos)
+		let trophyDistance = Math.hypot(touch1.xPos - trophy.xPos, touch1.yPos - trophy.yPos)
+		let touchingBall = ballDistance < ballRadius + TOUCH_TOLERANCE
+		let touchingTrophy = trophyDistance < trophy.radius + TOUCH_TOLERANCE
+		if (!touchingBall && !touchingTrophy) {
+			// Not touching ball or trophy - start drawing
+			currentVictoryStroke = [{ x: touch1.xPos, y: touch1.yPos }]
+			victoryTouchPos = { x: touch1.xPos, y: touch1.yPos }
+			return
+		}
+		// Touching ball or trophy - fall through to fling/swap logic below
+	}
+	
 	// TESTING: Clicking the score instantly advances to next level and increments score
 	ctx.save()
 	ctx.font = "bold 56px Arial"
@@ -2134,13 +2164,7 @@ function handleTouchstart(e) {
 	// Check if tapping on the ball (check after targets/obstacles to avoid blocking them)
 	let ballDistance = Math.hypot(touch1.xPos - ball.xPos, touch1.yPos - ball.yPos)
 	if (ballDistance < ballRadius + TOUCH_TOLERANCE) {
-		// If the ball is still moving fast enough, ignore this tap so you can't "double-fling".
-		let currentSpeed = Math.hypot(ball.xVel, ball.yVel)
-		if (currentSpeed > BALL_STOP_SPEED) {
-			return
-		}
-
-		// Check if we have something selected to swap with
+		// Check if we have something selected to swap with (allow swaps even when ball is moving)
 		if (selectedForConversion) {
 			if (selectedForConversion.type === 'target') {
 				swapBallAndTarget(selectedForConversion.index)
@@ -2172,6 +2196,13 @@ function handleTouchstart(e) {
 			}
 		}
 		
+		// If the ball is still moving fast enough, ignore this tap so you can't "double-fling".
+		// (But swaps above are still allowed even when ball is moving)
+		let currentSpeed = Math.hypot(ball.xVel, ball.yVel)
+		if (currentSpeed > BALL_STOP_SPEED) {
+			return
+		}
+		
 		// If nothing selected, prepare for flinging (don't select for swapping yet)
 		// Selection will happen in touchend only if user didn't drag (it was a tap)
 		ballTappedForSelection = true
@@ -2188,13 +2219,23 @@ function handleTouchstart(e) {
 
 function handleTouchmove(e) {
 	e.preventDefault()
+	let canvasRect = canvas.getBoundingClientRect()
 	let touch2 = { 
 		xPos: e.touches[0].clientX, 
 		yPos: e.touches[0].clientY 
 	}
+	
+	// Victory drawing mode - add points to current stroke
+	if (trophy && currentVictoryStroke) {
+		let canvasX = e.touches[0].clientX - canvasRect.left
+		let canvasY = e.touches[0].clientY - canvasRect.top
+		currentVictoryStroke.push({ x: canvasX, y: canvasY })
+		victoryTouchPos = { x: canvasX, y: canvasY }
+		return
+	}
+	
 	// If user moved their finger, it's a fling, not a tap
 	if (ballTappedForSelection) {
-		let canvasRect = canvas.getBoundingClientRect()
 		let currentX = e.touches[0].clientX - canvasRect.left
 		let currentY = e.touches[0].clientY - canvasRect.top
 		let moveDistance = Math.hypot(currentX - touch1.xPos, currentY - touch1.yPos)
@@ -2219,6 +2260,14 @@ function handleTouchmove(e) {
 }
 
 function handleTouchend() {
+	// Victory drawing mode - finish current stroke
+	if (trophy && currentVictoryStroke && currentVictoryStroke.length > 0) {
+		victoryDrawingStrokes.push(currentVictoryStroke)
+		currentVictoryStroke = null
+		victoryTouchPos = null
+		return
+	}
+	
 	// Ball can only be swapped when tapped second (after selecting another sprite)
 	// So we don't select the ball for swapping here
 	ball.isBeingFlung = false
@@ -3504,6 +3553,9 @@ function moveBall() {
 			ball.yVel = 0
 			ball.isBeingFlung = false
 
+			// Restore the score to what it was at the start of the level
+			completionScore = savedCompletionScore
+
 			// CRITICAL: Restore everything to exactly match the initial level state
 			// Restore targets array first
 			if (savedTargets && savedTargets.length > 0) {
@@ -4437,6 +4489,9 @@ function draw() {
 	
 	// Draw electric lines during swap animations
 	drawSwapAnimationLines()
+	
+	// Draw victory drawing (user can draw when trophy is hit)
+	drawVictoryDrawing()
 }
 
 function createFireworks(x, y, color = "blue") {
@@ -4545,13 +4600,16 @@ function drawBall() {
 	ctx.arc(x + eyeSpacing, eyeY, eyeSize, 0, 2 * Math.PI)
 	ctx.fill()
 	
-	// Smile (curved smile)
+	// Smile
+	let mouthY = y + radius * 0.15
+	let mouthWidth = radius * 0.4
+	
 	ctx.strokeStyle = "#000000"
 	ctx.lineWidth = Math.max(2, radius * 0.08)
 	ctx.lineCap = "round"
 	ctx.beginPath()
-	let mouthY = y + radius * 0.15
-	let mouthWidth = radius * 0.4
+	
+	// Normal closed smile
 	ctx.arc(x, mouthY, mouthWidth, 0.2, Math.PI - 0.2, false)
 	ctx.stroke()
 	
@@ -5644,6 +5702,147 @@ function drawSwapAnimationLines() {
 		
 		ctx.restore()
 	}
+}
+
+// Draw victory drawing strokes and electric line when trophy appears
+function drawVictoryDrawing() {
+	if (!trophy) return
+	
+	ctx.save()
+	
+	// Draw all completed strokes in neon green
+	ctx.strokeStyle = "#00ff66"
+	ctx.lineWidth = 3
+	ctx.lineCap = "round"
+	ctx.lineJoin = "round"
+	ctx.shadowColor = "#00ff66"
+	ctx.shadowBlur = 10
+	
+	for (let stroke of victoryDrawingStrokes) {
+		if (stroke.length < 2) continue
+		ctx.beginPath()
+		ctx.moveTo(stroke[0].x, stroke[0].y)
+		for (let i = 1; i < stroke.length; i++) {
+			ctx.lineTo(stroke[i].x, stroke[i].y)
+		}
+		ctx.stroke()
+	}
+	
+	// Draw current stroke being drawn
+	if (currentVictoryStroke && currentVictoryStroke.length >= 2) {
+		ctx.beginPath()
+		ctx.moveTo(currentVictoryStroke[0].x, currentVictoryStroke[0].y)
+		for (let i = 1; i < currentVictoryStroke.length; i++) {
+			ctx.lineTo(currentVictoryStroke[i].x, currentVictoryStroke[i].y)
+		}
+		ctx.stroke()
+	}
+	
+	// Draw electric line from touch position to ball
+	if (victoryTouchPos && ball) {
+		let touchX = victoryTouchPos.x
+		let touchY = victoryTouchPos.y
+		let ballX = ball.xPos
+		let ballY = ball.yPos
+		
+		// Calculate distance and direction
+		let dx = ballX - touchX
+		let dy = ballY - touchY
+		let distance = Math.hypot(dx, dy)
+		
+		if (distance > 1) {
+			// Normalize direction
+			let nx = dx / distance
+			let ny = dy / distance
+			// Perpendicular direction for offsets
+			let px = -ny
+			let py = nx
+			
+			// Time-based animation for electricity flicker
+			let time = Date.now() * 0.01
+			
+			// Draw glow effect (outer layer)
+			ctx.shadowBlur = 0
+			ctx.strokeStyle = "rgba(0, 255, 100, 0.3)"
+			ctx.lineWidth = 8
+			ctx.lineCap = "round"
+			ctx.lineJoin = "round"
+			ctx.beginPath()
+			ctx.moveTo(touchX, touchY)
+			ctx.lineTo(ballX, ballY)
+			ctx.stroke()
+			
+			// Draw main electricity line with jagged segments
+			let segments = Math.max(5, Math.floor(distance / 30))
+			
+			// Draw multiple electricity arcs for effect
+			for (let arc = 0; arc < 3; arc++) {
+				ctx.strokeStyle = arc === 0 ? "#00ff66" : "rgba(150, 255, 200, 0.6)"
+				ctx.lineWidth = arc === 0 ? 2 : 1
+				
+				ctx.beginPath()
+				ctx.moveTo(touchX, touchY)
+				
+				for (let i = 1; i < segments; i++) {
+					let t = i / segments
+					// Base position along the line
+					let baseX = touchX + dx * t
+					let baseY = touchY + dy * t
+					
+					// Add random offset perpendicular to the line (electricity jitter)
+					let noise1 = Math.sin(time + i * 3.7 + arc * 2.1) * 0.5 + Math.sin(time * 1.3 + i * 2.3) * 0.5
+					let noise2 = Math.cos(time * 0.8 + i * 4.1 + arc * 1.7) * 0.5 + Math.cos(time * 1.7 + i * 1.9) * 0.5
+					let offset = (noise1 + noise2) * 12 * (1 - Math.abs(t - 0.5) * 2)
+					
+					let jitterX = baseX + px * offset
+					let jitterY = baseY + py * offset
+					
+					ctx.lineTo(jitterX, jitterY)
+				}
+				
+				ctx.lineTo(ballX, ballY)
+				ctx.stroke()
+			}
+			
+			// Draw bright core
+			ctx.strokeStyle = "#aaffcc"
+			ctx.lineWidth = 1
+			ctx.beginPath()
+			ctx.moveTo(touchX, touchY)
+			ctx.lineTo(ballX, ballY)
+			ctx.stroke()
+			
+			// Add small spark effects at both ends
+			let sparkCount = 3
+			for (let i = 0; i < sparkCount; i++) {
+				let sparkAngle = time * 2 + i * (Math.PI * 2 / sparkCount)
+				let sparkLen = 8 + Math.sin(time * 3 + i) * 4
+				
+				ctx.strokeStyle = "rgba(150, 255, 200, 0.8)"
+				ctx.lineWidth = 1
+				
+				// Spark at touch end
+				ctx.beginPath()
+				ctx.moveTo(touchX, touchY)
+				ctx.lineTo(
+					touchX + Math.cos(sparkAngle) * sparkLen,
+					touchY + Math.sin(sparkAngle) * sparkLen
+				)
+				ctx.stroke()
+				
+				// Spark at ball end
+				ctx.beginPath()
+				ctx.moveTo(ballX, ballY)
+				ctx.lineTo(
+					ballX + Math.cos(sparkAngle + Math.PI) * sparkLen,
+					ballY + Math.sin(sparkAngle + Math.PI) * sparkLen
+				)
+				ctx.stroke()
+			}
+		}
+	}
+	
+	ctx.restore()
 }
 
 function getScoreCenter() {
