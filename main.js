@@ -141,6 +141,7 @@ let level2HintFadeOutStartTime = null // When the hint should start fading out
 let level1HintPosition = null // Random position for the level 1 hint
 let level1BallFadeInTime = null // When the ball faded in on level 1
 let level1HintFadeOutStartTime = null // When the hint should start fading out
+let targetHitIndicators = [] // Array of { x, y, startTime } for "+1" indicators at target hit locations
 
 // Victory drawing - user can draw on screen when trophy is displayed
 let victoryDrawingStrokes = [] // Array of completed strokes, each stroke is an array of {x, y} points
@@ -601,6 +602,7 @@ function generateLevel(isRetry = false, fewerSprites = false) {
 	}
 	selectedForConversion = null
 	scoreIncrementDisplay = null // Reset score increment display
+	targetHitIndicators = [] // Reset target hit indicators
 	// Clear any pending timeouts
 	if (obstacleExplosionTimeout !== null) {
 		clearTimeout(obstacleExplosionTimeout)
@@ -3762,6 +3764,13 @@ function handleCollisionWithTarget() {
 			// Increment completion score when a target is collected
 			completionScore++
 			
+			// Create "+1" indicator at target hit location
+			targetHitIndicators.push({
+				x: targetX,
+				y: targetY,
+				startTime: Date.now()
+			})
+			
 			// Fade away obstacles when last target is collected
 			// Check this BEFORE the bush effect early return so level completion still works
 			if (wasLastTarget) {
@@ -4551,6 +4560,9 @@ function draw() {
 	
 	// Draw level 1 hint if 10 seconds passed and tries == 0
 	drawLevel1Hint()
+	
+	// Draw "+1" indicators at target hit locations
+	drawTargetHitIndicators()
 }
 
 function createFireworks(x, y, color = "blue") {
@@ -6285,6 +6297,52 @@ function drawCompletionScore() {
 			scoreIncrementDisplay.opacity = Math.max(0, scoreIncrementDisplay.timeLeft / SCORE_INCREMENT_FADE_DURATION)
 		}
 	}
+}
+
+// Draw "+1" indicators at target hit locations
+function drawTargetHitIndicators() {
+	const INDICATOR_DURATION = 1000 // 1 second
+	const now = Date.now()
+	
+	// Filter out expired indicators and draw active ones
+	targetHitIndicators = targetHitIndicators.filter(indicator => {
+		let elapsed = now - indicator.startTime
+		if (elapsed >= INDICATOR_DURATION) {
+			return false // Remove expired indicator
+		}
+		
+		// Calculate opacity (fade out over the last 200ms)
+		let fadeOutStart = INDICATOR_DURATION - 200
+		let opacity = 1.0
+		if (elapsed > fadeOutStart) {
+			opacity = 1.0 - ((elapsed - fadeOutStart) / 200)
+		}
+		
+		ctx.save()
+		ctx.globalAlpha = opacity
+		
+		// Use same font style as score
+		ctx.font = "bold 32px Arial"
+		ctx.textAlign = "center"
+		ctx.textBaseline = "middle"
+		
+		let text = "+1"
+		
+		// Draw outline for visibility
+		ctx.strokeStyle = "black"
+		ctx.lineWidth = 4
+		ctx.lineJoin = "round"
+		ctx.miterLimit = 2
+		ctx.strokeText(text, indicator.x, indicator.y)
+		
+		// Draw fill text (same color as score - gold)
+		ctx.fillStyle = "#ffd700"
+		ctx.fillText(text, indicator.x, indicator.y)
+		
+		ctx.restore()
+		
+		return true // Keep this indicator
+	})
 }
 
 function updateTutorial() {
