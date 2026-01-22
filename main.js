@@ -41,13 +41,13 @@ let wormholeDisabledUntil = 0 // Timestamp when wormholes become available again
 let targets = []
 let targetsRemaining = []
 let obstacles = []
-let star = null // White star that removes obstacles when hit (spawns starting level 5, cycles through items)
-let switcher = null // White loop symbol that switches all red and blue balls when hit (spawns starting level 5, cycles through items)
-let cross = null // White cross/X mark that doubles obstacles when hit (spawns starting level 5, cycles through items)
-let lightning = null // Orange lightning bolt that gives pass-through (spawns starting level 5, cycles through items)
+let star = null // White star that removes obstacles when hit (spawns starting level 6, cycles through items)
+let switcher = null // White loop symbol that switches all red and blue balls when hit (spawns starting level 6, cycles through items)
+let cross = null // White cross/X mark that doubles obstacles when hit (spawns starting level 6, cycles through items)
+let lightning = null // Orange lightning bolt that gives pass-through (spawns starting level 6, cycles through items)
 let lightningImage = null // Image for lightning bolt
-let bush = null // Green bush that slows ball and gives green border (spawns starting level 5, cycles through items)
-let wormhole = null // Array of two purple wormholes that teleport ball between them (spawns starting level 5, cycles through items)
+let bush = null // Green bush that slows ball and gives green border (spawns starting level 6, cycles through items)
+let wormhole = null // Array of two purple wormholes that teleport ball between them (spawns starting level 6, cycles through items)
 let starHitThisTry = false // Track whether ball was colliding with star on the previous frame (for hit detection)
 let crossHitThisTry = false // Track whether ball was colliding with cross on the previous frame (for hit detection)
 let starLastHitTime = 0 // Timestamp of last star activation (cooldown)
@@ -280,10 +280,10 @@ function generateLevel(isRetry = false, fewerSprites = false) {
 		wormholeLastTeleportTime = 0
 		wormholeTeleportPending = null
 		wormholeDisabledUntil = 0
-		// Spawn special items per level starting at level 5
+		// Spawn special items per level starting at level 6
 		// First cycle: one item per level, randomly cycling through all items
 		// After all items shown once: two items per level
-		if (level >= 5) {
+		if (level >= 6) {
 			// For new levels, reset the current level's special item types
 			if (!fewerSprites) {
 				currentLevelSpecialItem = null
@@ -462,9 +462,9 @@ function generateLevel(isRetry = false, fewerSprites = false) {
 			lightningEffectActive = false
 			bushEffectActive = false
 			ballStoppedByBushEffect = false
-			// Spawn special items per level starting at level 5
+			// Spawn special items per level starting at level 6
 			// For retries, use the same item types that were selected for this level
-			if (level >= 5) {
+			if (level >= 6) {
 				// Use the current level's special items (determined on first attempt)
 				if (currentLevelSpecialItems.length > 0) {
 					for (let item of currentLevelSpecialItems) {
