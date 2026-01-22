@@ -4560,6 +4560,10 @@ function draw() {
 				// Start fade-out for starting door when ball fade-in is complete
 				if (startingDoor && startingDoor.fadeOutStartTime === null) {
 					startingDoor.fadeOutStartTime = Date.now()
+					// Start hint fade-in 1 second after door fade-out starts (only on level 3)
+					if (level === 3 && !hasExecutedSwap && level3HintFadeInStartTime === null) {
+						level3HintFadeInStartTime = startingDoor.fadeOutStartTime + 1000
+					}
 				}
 				// Also clear initial intro flag if this was the first level
 				if (initialIntroActive && !hasCompletedALevel) {
@@ -4584,10 +4588,6 @@ function draw() {
 			
 			// Clear starting door after fade-out completes
 			if (elapsed >= fadeDuration) {
-				// Start hint fade-in 1 second after door fades out (only on level 3)
-				if (level === 3 && !hasExecutedSwap && level3HintFadeInStartTime === null) {
-					level3HintFadeInStartTime = Date.now() + 1000
-				}
 				// Start level 10 hint fade-in 1 second after door fades out
 				if (level === 10 && level10HintFadeInStartTime === null) {
 					level10HintFadeInStartTime = Date.now() + 1000
