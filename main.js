@@ -1779,8 +1779,7 @@ function handleTouchstart(e) {
 	if (ballStoppedByBushEffect) {
 		let ballDistance = Math.hypot(touch1.xPos - ball.xPos, touch1.yPos - ball.yPos)
 		if (ballDistance < ballRadius + TOUCH_TOLERANCE * 2) { // Use larger tolerance for easier detection
-			// User tapped on or near ball - allow flinging
-			selectedForConversion = { type: 'ball', index: 0 }
+			// User tapped on or near ball - allow flinging (but don't select for swapping)
 			ball.isBeingFlung = true
 			ballStoppedByBushEffect = false
 			return
@@ -1818,10 +1817,6 @@ function handleTouchstart(e) {
 			} else if (selectedForConversion && selectedForConversion.type === 'wormhole') {
 				// Second tap: we have a wormhole selected, now tapping star - swap positions
 				swapWormholeAndStar(selectedForConversion.index)
-				return
-			} else if (selectedForConversion && selectedForConversion.type === 'ball') {
-				// Second tap: we have a ball selected, now tapping star - swap positions
-				swapBallAndStar()
 				return
 			} else {
 				// First tap: select this star
@@ -1863,10 +1858,6 @@ function handleTouchstart(e) {
 				// Second tap: we have a wormhole selected, now tapping cross - swap positions
 				swapWormholeAndCross(selectedForConversion.index)
 				return
-			} else if (selectedForConversion && selectedForConversion.type === 'ball') {
-				// Second tap: we have a ball selected, now tapping cross - swap positions
-				swapBallAndCross()
-				return
 			} else {
 				// First tap: select this cross
 				selectedForConversion = { type: 'cross', index: 0 }
@@ -1906,10 +1897,6 @@ function handleTouchstart(e) {
 			} else if (selectedForConversion && selectedForConversion.type === 'wormhole') {
 				// Second tap: we have a wormhole selected, now tapping switcher - swap positions
 				swapWormholeAndSwitcher(selectedForConversion.index)
-				return
-			} else if (selectedForConversion && selectedForConversion.type === 'ball') {
-				// Second tap: we have a ball selected, now tapping switcher - swap positions
-				swapBallAndSwitcher()
 				return
 			} else {
 				// First tap: select this switcher
@@ -1951,10 +1938,6 @@ function handleTouchstart(e) {
 				// Second tap: we have a wormhole selected, now tapping lightning - swap positions
 				swapWormholeAndLightning(selectedForConversion.index)
 				return
-			} else if (selectedForConversion && selectedForConversion.type === 'ball') {
-				// Second tap: we have a ball selected, now tapping lightning - swap positions
-				swapBallAndLightning()
-				return
 			} else {
 				// First tap: select this lightning
 				selectedForConversion = { type: 'lightning', index: 0 }
@@ -1990,10 +1973,6 @@ function handleTouchstart(e) {
 			} else if (selectedForConversion && selectedForConversion.type === 'lightning') {
 				// Second tap: we have a lightning selected, now tapping bush - swap positions
 				swapBushAndLightning()
-				return
-			} else if (selectedForConversion && selectedForConversion.type === 'ball') {
-				// Second tap: we have a ball selected, now tapping bush - swap positions
-				swapBallAndBush()
 				return
 			} else {
 				// First tap: select this bush
@@ -2039,10 +2018,6 @@ function handleTouchstart(e) {
 				} else if (selectedForConversion && selectedForConversion.type === 'bush') {
 					// Second tap: we have a bush selected, now tapping wormhole - swap positions
 					swapWormholeAndBush(i)
-					return
-				} else if (selectedForConversion && selectedForConversion.type === 'ball') {
-					// Second tap: we have a ball selected, now tapping wormhole - swap positions
-					swapBallAndWormhole(i)
 					return
 				} else if (selectedForConversion && selectedForConversion.type === 'wormhole') {
 					// Second tap: we have another wormhole selected, now tapping this wormhole - swap positions
@@ -2095,10 +2070,6 @@ function handleTouchstart(e) {
 				// Second tap: we have a wormhole selected, now tapping obstacle - swap positions
 				swapWormholeAndObstacle(i, selectedForConversion.index)
 				return
-			} else if (selectedForConversion && selectedForConversion.type === 'ball') {
-				// Second tap: we have a ball selected, now tapping obstacle - swap positions
-				swapBallAndObstacle(i)
-				return
 			} else {
 				// First tap: select this obstacle
 				selectedForConversion = { type: 'obstacle', index: i }
@@ -2140,10 +2111,6 @@ function handleTouchstart(e) {
 				// Second tap: we have a wormhole selected, now tapping target - swap positions
 				swapWormholeAndTarget(i, selectedForConversion.index)
 				return
-			} else if (selectedForConversion && selectedForConversion.type === 'ball') {
-				// Second tap: we have a ball selected, now tapping target - swap positions
-				swapBallAndTarget(i)
-				return
 			} else {
 				// First tap: select this target
 				selectedForConversion = { type: 'target', index: i }
@@ -2156,12 +2123,8 @@ function handleTouchstart(e) {
 	if (trophy && !trophy.hit) {
 		let trophyDistance = Math.hypot(touch1.xPos - trophy.xPos, touch1.yPos - trophy.yPos)
 		if (trophyDistance < trophy.radius + TOUCH_TOLERANCE) {
-			if (selectedForConversion && selectedForConversion.type === 'ball') {
-				// Second tap: we have a ball selected, now tapping trophy - swap positions
-				swapBallAndTrophy()
-				return
-			} else {
-				// First tap: select this trophy
+			// First tap: select this trophy
+			{
 				selectedForConversion = { type: 'trophy', index: 0 }
 				return
 			}
@@ -2256,10 +2219,8 @@ function handleTouchmove(e) {
 }
 
 function handleTouchend() {
-	// If ball was tapped and user didn't move, select it for swapping
-	if (ballTappedForSelection && !touchMoved) {
-		selectedForConversion = { type: 'ball', index: 0 }
-	}
+	// Ball can only be swapped when tapped second (after selecting another sprite)
+	// So we don't select the ball for swapping here
 	ball.isBeingFlung = false
 	isConvertingObstacle = false
 	ballTappedForSelection = false // Reset flag
