@@ -15,7 +15,6 @@ const SPAWN_ANIMATION_DURATION = 700 // ms for ball spawn animation
 const FADE_DURATION = 1000 // ms for fade animations
 const FADE_IN_DELAY = 1000 // ms delay before starting fade-in (prevents flashing)
 const TROPHY_PLACEMENT_DELAY = 1000 // ms delay before placing trophy (same as obstacle fade)
-const TUTORIAL_FADE_DELAY = 2000 // ms delay before fading tutorial
 const OBSTACLE_FADE_DELAY = 1000 // ms delay before fading obstacles
 const BALL_MIN_CONTINUE_SPEED = 3 // If above this and path will clear all targets, don't auto-reset yet
 const AUTO_RESET_DURATION = 1000 // ms for ball move-back + target fade-in
@@ -62,7 +61,6 @@ let bushEffectActive = false // Track if bush effect is currently active (lasts 
 let wormholeEffectActive = false // Track if wormhole effect (purple border) is currently active (lasts for rest of try)
 let ballStoppedByBushEffect = false // Track if ball was stopped by bush effect (prevents auto-reset until user flings again)
 let trophy = null // Trophy that appears after collecting all targets
-let startingDoor = null // Small door that appears behind character at level start
 let savedTargets = [] // Saved positions for retry
 let savedObstacles = [] // Saved positions for retry
 let savedBall = null // Saved ball position for retry
@@ -89,16 +87,6 @@ let previousBallY = null
 // Track whether we've already completed at least one level (so we can skip
 // the spawn animation for the very first level).
 let hasCompletedALevel = false
-// Tutorial steps:
-// 1 = "Fling the grey ball"
-// 2 = "Hit all the blue balls ..."
-// 3 = "Swap any two items by tapping them" (still level 1)
-// 4 = "Think carefully and aim true!" (shown on level 2)
-let tutorialStep = 0 // 0 = off
-let tutorialCompleted = true // Tutorial disabled
-// Remember last on-screen tutorial position so follow-up levels can reuse it.
-let tutorialLastX = null
-let tutorialLastY = null
 // For the very first level only, fade in the grey ball and score.
 let initialIntroActive = true
 let initialIntroStartTime = 0
@@ -118,6 +106,8 @@ let autoResetBallFromX = 0
 let autoResetBallFromY = 0
 let autoResetBallToX = 0
 let autoResetBallToY = 0
+let obstacleFadeOutCompleteTime = null // Track when obstacles finish fading out
+let ballFadeOutStartedTime = null // Track when ball fade-out started (kept even after ball finishes)
 let tries = 0
 let levelScore = 0
 let totalScore = 0
@@ -129,28 +119,23 @@ let level = 0
 let gameLoopTimeout = null
 let fireworks = []
 let obstacleExplosionTimeout = null
-let tutorialExplosionTimeout = null
 let nextLevelTimeout = null
 let isGeneratingLevel = false
 let pendingNextLevel = false
 let ballHiddenForNextLevel = false // Track if ball is hidden waiting for next level to start
 let ballFadeOutStartTime = null // Track when ball fade-out started
 let doorFadeOutStartTime = null // Track when door fade-out started
+let waitingForBallToStopAfterLastTarget = false // Track if we're waiting for ball to stop naturally after last target
+let level1TutorialPopupStartTime = null // Track when level 1 tutorial popup should appear
+let level1TutorialPopupVisible = false // Track if level 1 tutorial popup is visible
+let level1InitialBallY = null // Store initial ball Y position for fixed tutorial text
+let level1Step2TutorialStartTime = null // Track when level 1 step 2 tutorial should appear
+let level1Step2TutorialVisible = false // Track if level 1 step 2 tutorial is visible
+let level1Step3TutorialStartTime = null // Track when level 1 step 3 tutorial should appear
+let level1Step3TutorialVisible = false // Track if level 1 step 3 tutorial is visible
 
-// Track if user has ever executed a swap (for level 3 hint)
+// Track if user has ever executed a swap
 let hasExecutedSwap = false
-let level3HintPosition = null // Random position for the swap hint on level 3
-let level3HintFadeInStartTime = null // When the hint should start fading in
-let level3HintFadeOutStartTime = null // When the hint should start fading out
-let level2HintPosition = null // Random position for the level 2 hint
-let level2HintFadeInStartTime = null // When the level 2 hint should start fading in
-let level2HintFadeOutStartTime = null // When the hint should start fading out
-let level1HintPosition = null // Random position for the level 1 hint
-let level1BallFadeInTime = null // When the ball faded in on level 1
-let level1HintFadeOutStartTime = null // When the hint should start fading out
-let level10HintPosition = null // Random position for the level 10 hint
-let level10HintFadeInStartTime = null // When the hint should start fading in
-let level10HintFadeOutStartTime = null // When the hint should start fading out
 
 // Victory drawing - user can draw on screen when trophy is displayed
 let victoryDrawingStrokes = [] // Array of completed strokes, each stroke is an array of {x, y} points
@@ -170,8 +155,8 @@ function initializeGame() {
 	initialIntroActive = true
 	initialIntroStartTime = Date.now()
 	ball.fadeOpacity = 0.0
-	// Ball will fade in 1 second after the door (which fades in 1 second after targets/obstacles)
-	ball.fadeInStartTime = Date.now() + FADE_IN_DELAY + FADE_DURATION * 2
+	// Ball will fade in 1 second after targets/obstacles start fading in
+	ball.fadeInStartTime = Date.now() + FADE_IN_DELAY + 1000
 	window.addEventListener("resize", resizeCanvas)
 	document.addEventListener("touchstart", handleTouchstart)
 	document.addEventListener("touchmove", handleTouchmove, { passive: false })
@@ -190,23 +175,19 @@ function generateLevel(isRetry = false, fewerSprites = false) {
 		shotActive = false
 		obstacleCollisionTimes = [] // Reset obstacle collision tracking
 		ballSlowBelowStopSpeedTime = null // Reset ball slow tracking
-		// Reset level 3 hint position so it gets recalculated for the new level
-		level3HintPosition = null
-		level3HintFadeInStartTime = null // Reset fade-in start time for new level
-		level3HintFadeOutStartTime = null // Reset fade-out start time for new level
-		// Reset level 2 hint position so it gets recalculated for the new level
-		level2HintPosition = null
-		level2HintFadeInStartTime = null // Reset fade-in start time for new level
-		level2HintFadeOutStartTime = null // Reset fade-out start time for new level
-		// Reset level 1 hint position so it gets recalculated for the new level
-		level1HintPosition = null
-		level1BallFadeInTime = null // Reset ball fade-in time for new level
-		level1HintFadeOutStartTime = null // Reset fade-out start time for new level
-		// Reset level 10 hint position so it gets recalculated for the new level
-		level10HintPosition = null
-		level10HintFadeInStartTime = null // Reset fade-in start time for new level
-		level10HintFadeOutStartTime = null // Reset fade-out start time for new level
 	}
+	// Always reset flag for waiting for ball to stop (both new levels and retries)
+	waitingForBallToStopAfterLastTarget = false
+	obstacleFadeOutCompleteTime = null // Reset obstacle fade-out completion tracking
+	ballFadeOutStartedTime = null // Reset ball fade-out start time tracking
+	// Reset level 1 tutorial popup
+	level1TutorialPopupStartTime = null
+	level1TutorialPopupVisible = false
+	level1InitialBallY = null
+	level1Step2TutorialStartTime = null
+	level1Step2TutorialVisible = false
+	level1Step3TutorialStartTime = null
+	level1Step3TutorialVisible = false
 	
 	// Check tries before resetting - if retrying with tries > 0, restore saved positions
 	let shouldRestorePositions = isRetry && !fewerSprites && tries > 0
@@ -262,24 +243,6 @@ function generateLevel(isRetry = false, fewerSprites = false) {
 		}
 		placeBall()
 		
-		// Create starting door behind character (only on new levels, not retries)
-		if (!isRetry) {
-			let ballRadius = getBallRadius()
-			// Level 1: door fades in 1 second after targets/obstacles (score also fading in)
-			// Level 2+: door fades in 1 second after targets/obstacles
-			let doorFadeDelay = FADE_DURATION
-			startingDoor = {
-				xPos: ball.xPos,
-				yPos: ball.yPos,
-				radius: ballRadius * 1.5, // Bigger than the ball so edges are visible
-				fadeInOpacity: 0,
-				fadeInStartTime: levelFadeInStartTime + doorFadeDelay,
-				fadeOutStartTime: null
-			}
-		} else {
-			// Clear starting door on retries
-			startingDoor = null
-		}
 		// Reset all special items before potentially placing a new one
 		star = null
 		switcher = null
@@ -399,7 +362,6 @@ function generateLevel(isRetry = false, fewerSprites = false) {
 		savedCompletionScore = completionScore
 	} else {
 		// Normal retry - restore obstacles and targets for current level
-		// Level stays the same, so tutorial stays the same
 		if (shouldRestorePositions && savedTargets.length > 0 && savedObstacles.length > 0 && savedBall) {
 			// Restore saved positions
 			targets = JSON.parse(JSON.stringify(savedTargets))
@@ -568,36 +530,32 @@ function generateLevel(isRetry = false, fewerSprites = false) {
 	victoryTouchPos = null
 	// Don't reset star here - it's placed after obstacles/ball, so reset it before placement
 	trophy = null // Reset trophy for new level
-	// Don't reset startingDoor here - it only appears on new levels, not retries
 	pendingNextLevel = false
 	autoResetActive = false
 
-	// Hide any trophy hint overlay when starting a new level
-	let existingHint = document.getElementById("trophyHintOverlay")
-	if (existingHint) {
-		existingHint.style.visibility = "hidden"
-		existingHint.style.opacity = "0"
-	}
  
-	// Initialize ball fade-in - ball fades in 1 second after door
-	// Level 1: targets at 1s, door at 2s, ball at 3s
-	// Level 2+: targets at 0s, door at 1s, ball at 2s
-	let ballFadeDelay = level === 1 ? FADE_IN_DELAY + FADE_DURATION * 2 : FADE_DURATION * 2
+	// Initialize ball fade-in - ball fades in 1 second after targets/obstacles start fading in
+	// Obstacles/targets start at levelFadeInStartTime
+	// Ball should start at levelFadeInStartTime + 1000 (1 second after they start)
+	let ballFadeDelay = (levelFadeInStartTime - Date.now()) + 1000
 	if (ball && !wormholeTeleportPending) {
 		if (ballWasHidden || !isRetry) {
-			// New level or coming from door hit - start ball at opacity 0 and fade in after door
+			// New level or coming from door hit - start ball at opacity 0 and fade in after targets/obstacles
 			ball.fadeOpacity = 0
 			ball.fadeInStartTime = Date.now() + ballFadeDelay
+			// Clear ballHiddenForNextLevel when starting new level fade-in
+			ballHiddenForNextLevel = false
 		} else {
 			// Retry - keep ball visible
 			ball.fadeOpacity = 1.0
+			ballHiddenForNextLevel = false
 		}
 	}
 
 	// If this is a new level AFTER the first completion (not a retry) and we know
 	// where the ball was before, animate the ball moving from its previous position
 	// into the new starting spot. BUT skip animation if ball was hidden (from door hit).
-	// Start spawn animation after door has faded in
+	// Start spawn animation when ball fade-in starts
 	if (!isRetry && hasCompletedALevel && previousBallX !== null && previousBallY !== null && !ballWasHidden) {
 		// Store the spawn animation state on the ball
 		ball.spawnFromX = previousBallX
@@ -615,16 +573,12 @@ function generateLevel(isRetry = false, fewerSprites = false) {
 		ball.yVel = 0
 		ball.isBeingFlung = false
 	}
-	selectedForConversion = null
+		selectedForConversion = null
 	scoreIncrementDisplay = null // Reset score increment display
 	// Clear any pending timeouts
 	if (obstacleExplosionTimeout !== null) {
 		clearTimeout(obstacleExplosionTimeout)
 		obstacleExplosionTimeout = null
-	}
-	if (tutorialExplosionTimeout !== null) {
-		clearTimeout(tutorialExplosionTimeout)
-		tutorialExplosionTimeout = null
 	}
 	if (nextLevelTimeout !== null) {
 		clearTimeout(nextLevelTimeout)
@@ -634,10 +588,6 @@ function generateLevel(isRetry = false, fewerSprites = false) {
 	pointsThisLevel = 0 // Reset points gained this level
 	tries = 0
 	crossHitThisTry = false // Reset cross hit flag for new try
-	// Initialize or clear tutorial for this level
-	// Tutorial disabled - always set to 0
-	tutorialStep = 0
-	updateTutorial()
 	if (gameLoopTimeout !== null) {
 		clearTimeout(gameLoopTimeout)
 		gameLoopTimeout = null
@@ -708,7 +658,7 @@ function loopGame() { // MAIN GAME LOOP
 
 // Start a swap animation for a sprite
 function startSwapAnimation(sprite, fromX, fromY, toX, toY) {
-	// Mark that user has executed a swap (for level 3 hint)
+	// Mark that user has executed a swap
 	hasExecutedSwap = true
 	// Remove any existing animation for this sprite
 	swapAnimations = swapAnimations.filter(a => a.sprite !== sprite)
@@ -2327,7 +2277,6 @@ function handleTouchmove(e) {
 			crossHitThisTry = false
 			// Reset star hit flag when starting a new try
 			starHitThisTry = false
-			// Tutorial disabled - no progression
 			tries++
 		}
 		ball.xVel = (touch2.xPos - touch1.xPos) / FLING_DIVISOR
@@ -2446,6 +2395,11 @@ function placeBall() {
 		xVel: 0,
 		yVel: 0,
 		isBeingFlung: false
+	}
+	
+	// Store initial ball Y position for level 1 tutorial text
+	if (level === 1) {
+		level1InitialBallY = yPos
 	}
 }
 
@@ -2743,45 +2697,17 @@ function placeTrophy() {
 	lastTargetX = null
 	lastTargetY = null
 
-	// On level 1, while step 2 tutorial text is showing, also show a trophy hint line.
-	if (level === 1 && tutorialStep === 2) {
-		let hint = document.getElementById("trophyHintOverlay")
-		if (!hint) {
-			hint = document.createElement("div")
-			hint.id = "trophyHintOverlay"
-			hint.style.position = "absolute"
-			hint.style.color = "white"
-			hint.style.fontFamily = "Arial"
-			hint.style.fontSize = "24px"
-			hint.style.pointerEvents = "none"
-			hint.style.textAlign = "center"
-			hint.style.textShadow = "-2px -2px 0 black, 2px -2px 0 black, -2px 2px 0 black, 2px 2px 0 black, -2px 0 0 black, 2px 0 0 black, 0 -2px 0 black, 0 2px 0 black"
-			let container = document.getElementById("canvasContainer") || document.body
-			container.appendChild(hint)
-		}
-		hint.textContent = "(then collect the trophy)"
-		// Center horizontally at 60% canvas height
-		let x = canvas.width / 2
-		let y = canvas.height * 0.6
-		hint.style.left = x + "px"
-		hint.style.top = y + "px"
-		hint.style.transform = "translate(-50%, -50%)"
-		hint.style.visibility = "visible"
-		hint.style.opacity = "1"
-	}
 }
 
 function placeTargets() {
-	// Level 1: 1 target, level 2: 2 targets, level 3: 3 targets, 
-	// level 4: 4 targets, level 5+: 5 targets
-	let targetCount = Math.min(level, 5)
+	// All levels: 5 targets
+	let targetCount = 5
 	placeTargetsWithCount(targetCount)
 }
 
 function placeObstacles() {
-	// Level 1: 1 obstacle, level 2: 2 obstacles, level 3: 3 obstacles,
-	// level 4: 4 obstacles, level 5+: 5 obstacles
-	let obstacleCount = Math.min(level, 5)
+	// All levels: 5 obstacles
+	let obstacleCount = 5
 	placeObstaclesWithCount(obstacleCount)
 }
 
@@ -3552,9 +3478,16 @@ function moveBall() {
 			ball.yPos = autoResetBallToY
 			autoResetActive = false
 			
-			// Start level 2 hint fade-in when auto-reset completes for try 4 (tries == 3)
-			if (level === 2 && tries === 3 && level2HintFadeInStartTime === null) {
-				level2HintFadeInStartTime = Date.now()
+			// On level 1, show step 2 tutorial immediately when auto-reset completes (when tries == 1)
+			if (level === 1 && tries === 1) {
+				level1Step2TutorialVisible = true
+				level1Step2TutorialStartTime = Date.now() // Set to now so it appears immediately
+			}
+			
+			// On level 1, show step 3 tutorial immediately when auto-reset completes (when tries == 2)
+			if (level === 1 && tries === 2) {
+				level1Step3TutorialVisible = true
+				level1Step3TutorialStartTime = Date.now() // Set to now so it appears immediately
 			}
 		}
 		return
@@ -3591,9 +3524,38 @@ function moveBall() {
 	ball.xPos += ball.xVel
 	ball.yPos += ball.yVel
 	
-	// Apply friction
-	ball.xVel *= FRICTION 
-	ball.yVel *= FRICTION
+	// Apply friction (double friction after last target is hit)
+	let currentFriction = waitingForBallToStopAfterLastTarget ? FRICTION * FRICTION : FRICTION
+	ball.xVel *= currentFriction
+	ball.yVel *= currentFriction
+
+	// Check if we're waiting for the ball to stop after the last target - stop immediately when speed < BALL_STOP_SPEED
+	// This check must be outside the targetsRemaining.length > 0 condition since length is 0 after last target is hit
+	if (waitingForBallToStopAfterLastTarget && !pendingNextLevel && !isGeneratingLevel) {
+		let speed = Math.hypot(ball.xVel, ball.yVel)
+		if (speed < BALL_STOP_SPEED) {
+			waitingForBallToStopAfterLastTarget = false
+	obstacleFadeOutCompleteTime = null // Reset obstacle fade-out completion tracking
+			// Stop the ball immediately (just like auto-reset does)
+			ball.xVel = 0
+			ball.yVel = 0
+			ball.isBeingFlung = false
+			// Wait half a second after ball stops, then start fade-out animation for ball with electricity effect
+			setTimeout(() => {
+				let fadeOutStart = Date.now()
+				ballFadeOutStartTime = fadeOutStart
+				ballFadeOutStartedTime = fadeOutStart // Keep track of when fade-out started
+				ballHiddenForNextLevel = true
+				pendingNextLevel = false
+				// Mark that we've completed at least one level
+				hasCompletedALevel = true
+				
+				// Obstacles and special items will start fading out 1 second after ball fade-out starts
+				// (handled in the update loop)
+			}, 500)
+			return
+		}
+	}
 
 	// If a shot is in progress, the ball has effectively stopped (after the fling),
 	// and we still have targets remaining, start a quick animated reset of this
@@ -3601,35 +3563,36 @@ function moveBall() {
 	// targets fade back in, both finishing at the same time.
 	if (shotActive && !pendingNextLevel && !isGeneratingLevel && targetsRemaining.length > 0) {
 		let speed = Math.hypot(ball.xVel, ball.yVel)
-		
-		// If ball was being flung (from wormhole teleport or normal fling) and has slowed down,
-		// mark it as no longer being flung so auto-reset can trigger
-		// Use a conservative approach: only reset after ball has been slow for a brief moment
-		// to avoid interfering with active flinging or rapid velocity changes
-		if (ball.isBeingFlung) {
-			if (speed < BALL_STOP_SPEED) {
-				// Ball is slow - start tracking time
-				if (ballSlowBelowStopSpeedTime === null) {
-					ballSlowBelowStopSpeedTime = Date.now()
-				} else {
-					// Ball has been slow for confirmation time - safe to reset
-					let timeSlow = Date.now() - ballSlowBelowStopSpeedTime
-					if (timeSlow >= BALL_SLOW_CONFIRMATION_TIME) {
-						ball.isBeingFlung = false
-						ballSlowBelowStopSpeedTime = null
+			
+			// If ball was being flung (from wormhole teleport or normal fling) and has slowed down,
+			// mark it as no longer being flung so auto-reset can trigger
+			// Use a conservative approach: only reset after ball has been slow for a brief moment
+			// to avoid interfering with active flinging or rapid velocity changes
+			if (ball.isBeingFlung) {
+				if (speed < BALL_STOP_SPEED) {
+					// Ball is slow - start tracking time
+					if (ballSlowBelowStopSpeedTime === null) {
+						ballSlowBelowStopSpeedTime = Date.now()
+					} else {
+						// Ball has been slow for confirmation time - safe to reset
+						let timeSlow = Date.now() - ballSlowBelowStopSpeedTime
+						if (timeSlow >= BALL_SLOW_CONFIRMATION_TIME) {
+							ball.isBeingFlung = false
+							ballSlowBelowStopSpeedTime = null
+						}
 					}
+				} else {
+					// Ball sped up again - reset tracking
+					ballSlowBelowStopSpeedTime = null
 				}
 			} else {
-				// Ball sped up again - reset tracking
+				// Ball is not being flung - clear tracking
 				ballSlowBelowStopSpeedTime = null
 			}
-		} else {
-			// Ball is not being flung - clear tracking
-			ballSlowBelowStopSpeedTime = null
-		}
 		
 		// Check for auto-reset: ball must not be actively being flung AND speed must be below threshold
 		if (!ball.isBeingFlung && speed < BALL_STOP_SPEED) {
+			
 			// If the ball is still moving fast enough and our simple straight-line-
 			// with-friction prediction says it will clear all remaining targets,
 			// don't end the run yet.
@@ -3818,7 +3781,6 @@ function handleCollision() {
 	handleCollisionWithLightning()
 	handleCollisionWithBush()
 	handleCollisionWithWormhole()
-	handleCollisionWithTrophy()
 }
 
 function handleCollisionWithTarget() {
@@ -3840,66 +3802,28 @@ function handleCollisionWithTarget() {
 			// Increment completion score when a target is collected
 			completionScore++
 			
+			// On level 1, hide tutorial text when first target is hit
+			if (level === 1) {
+				level1TutorialPopupVisible = false
+				level1TutorialPopupStartTime = null
+				level1Step2TutorialVisible = false
+				level1Step2TutorialStartTime = null
+				level1Step3TutorialVisible = false
+				level1Step3TutorialStartTime = null
+			}
+			
 			// Fade away obstacles when last target is collected
 			// Check this BEFORE the bush effect early return so level completion still works
 			if (wasLastTarget) {
 				// This shot successfully cleared all targets
 				shotActive = false
 				
-				// Start fading out all hints when last target is hit
-				let fadeOutTime = Date.now()
-				if (level === 1 && level1HintFadeOutStartTime === null) {
-					level1HintFadeOutStartTime = fadeOutTime
-				}
-				if (level === 2 && level2HintFadeOutStartTime === null) {
-					level2HintFadeOutStartTime = fadeOutTime
-				}
-				if (level === 3 && level3HintFadeOutStartTime === null) {
-					level3HintFadeOutStartTime = fadeOutTime
-				}
-				if (level === 10 && level10HintFadeOutStartTime === null) {
-					level10HintFadeOutStartTime = fadeOutTime
-				}
+				// Obstacles will be removed 0.5 seconds after ball fade-out completes
+				// (handled in ball fade-out completion logic)
 				
-				// Remember where the last target was collected so we can place the trophy there
-				lastTargetX = targetX
-				lastTargetY = targetY
-				
-				// Start fading obstacles and special items after delay
-				setTimeout(() => {
-					for (let j = 0; j < obstacles.length; j++) {
-						let obstacle = obstacles[j]
-						obstacle.fadeOpacity = 1.0
-						obstacle.fading = true
-					}
-					
-					// Also remove any special items so they disappear with the obstacles
-					star = null
-					switcher = null
-					cross = null
-					lightning = null
-					bush = null
-					wormhole = null
-				}, OBSTACLE_FADE_DELAY)
-				
-				// Fade tutorial text after delay (but skip step 2 and all of level 2 tutorial - they fade after trophy)
-				tutorialExplosionTimeout = setTimeout(() => {
-					let tutorialOverlay = document.getElementById("tutorialOverlay")
-					if (tutorialOverlay && tutorialOverlay.style.visibility === "visible") {
-						// Don't fade step 2 on level 1 or any tutorial text on level 2 here –
-						// they should remain visible until the next level actually appears.
-						if (!((level === 1 && tutorialStep === 2) || level === 2)) {
-							tutorialOverlay.style.opacity = "0"
- 						}
-					}
-					tutorialExplosionTimeout = null
-				}, TUTORIAL_FADE_DELAY)
-				
-				// Place trophy after delay
-				setTimeout(() => {
-					placeTrophy()
-					// Tutorial step 2 and level 2 tutorial both stay until next level appears
-				}, TROPHY_PLACEMENT_DELAY)
+				// Let the ball stop naturally (accounting for BALL_STOP_SPEED)
+				// We'll detect when it stops in the game loop and start the fade-out then
+				waitingForBallToStopAfterLastTarget = true
 			}
 			
 			// If bush effect is active, stop the ball (user can fling again)
@@ -3941,6 +3865,7 @@ function handleCollisionWithObstacle() {
 			// If too many collisions in the time window, trigger auto-reset
 			if (shotActive && obstacleCollisionTimes.length >= MAX_OBSTACLE_COLLISIONS && !autoResetActive && !pendingNextLevel && !isGeneratingLevel) {
 				shotActive = false
+				// Set up ball auto-reset animation
 				autoResetActive = true
 				autoResetStartTime = Date.now()
 				autoResetBallFromX = ball.xPos
@@ -3949,6 +3874,7 @@ function handleCollisionWithObstacle() {
 					autoResetBallToX = savedBall.xPos
 					autoResetBallToY = savedBall.yPos
 				} else {
+					// Fallback: use current position if we somehow don't have a saved ball
 					autoResetBallToX = ball.xPos
 					autoResetBallToY = ball.yPos
 				}
@@ -4464,74 +4390,21 @@ function handleCollisionWithWormhole() {
 	}
 }
 
-function handleCollisionWithTrophy() {
-	if (!trophy) return
-	
-	let ballRadius = getBallRadius()
-	let dx = ball.xPos - trophy.xPos
-	let dy = ball.yPos - trophy.yPos
-	let distance = Math.hypot(dx, dy)
-	let collisionDistance = ballRadius + trophy.radius
-	
-	if (distance < collisionDistance && distance > 0) {
-		// Ball hit the door - stop the ball and make both disappear
-		// Prevent multiple collisions
-		if (trophy.hit) return
-		trophy.hit = true
-		
-		// Stop the ball at the collision point
-		ball.xVel = 0
-		ball.yVel = 0
-		ball.isBeingFlung = false
-		
-		// Position ball at the door's center (so it overlaps perfectly)
-		ball.xPos = trophy.xPos
-		ball.yPos = trophy.yPos
-		
-		// Fade out tutorial steps 2 and 4
-		let tutorialOverlay = document.getElementById("tutorialOverlay")
-		if (tutorialOverlay && tutorialOverlay.style.visibility === "visible") {
-			if ((level === 1 && tutorialStep === 2) || (level === 2 && tutorialStep === 4)) {
-				tutorialOverlay.style.opacity = "0"
-			}
-		}
-		// Also fade out the extra "then collect the trophy" hint if it's visible
-		let hint = document.getElementById("trophyHintOverlay")
-		if (hint && hint.style.visibility === "visible") {
-			hint.style.opacity = "0"
-		}
-		
-		// Start fade-out animation for ball immediately
-		ballFadeOutStartTime = Date.now()
-		doorFadeOutStartTime = null // Door will fade out after ball is fully faded
-		ballHiddenForNextLevel = true // Keep ball hidden during delay
-		pendingNextLevel = false
-		
-		// Mark that we've completed at least one level so future levels
-		// can animate the ball into its starting spot
-		hasCompletedALevel = true
-		// Tutorial only runs on level 1; mark it completed after finishing that level
-		if (level === 1 && !tutorialCompleted) {
-			tutorialCompleted = true
-			tutorialStep = 0
-			updateTutorial()
-		}
-	}
-}
-
 function draw() {
 	ctx.clearRect(0, 0, canvas.width, canvas.height)
 	
 	// Handle ball fade-out FIRST (takes precedence over everything else)
 	if (ballFadeOutStartTime !== null) {
 		let elapsed = Date.now() - ballFadeOutStartTime
-		let fadeDuration = 500 // 0.5 seconds to fade out
+		let fadeDuration = FADE_DURATION // 1 second to fade out (same as fade-in)
 		let t = Math.max(0.0, 1.0 - (elapsed / fadeDuration))
 		ball.fadeOpacity = t
 		
-		// After ball fade-out completes, start door fade-out
-		if (elapsed >= fadeDuration && doorFadeOutStartTime === null && trophy) {
-			doorFadeOutStartTime = Date.now()
+		// After ball fade-out completes, wait for obstacles to finish fading before generating next level
+		if (elapsed >= fadeDuration) {
+			ballFadeOutStartTime = null
+			// Keep ballHiddenForNextLevel true until the new level starts fading in
+			// Don't generate next level yet - wait for obstacles to finish fading (they start 1s after ball, take 1s to fade)
 		}
 	} else {
 		// Handle ball fade-in after level elements have faded in (works for all levels including first)
@@ -4553,21 +4426,13 @@ function draw() {
 			// Clear fade-in start time once fade-in is complete
 			if (t >= 1.0) {
 				ball.fadeInStartTime = undefined
-				// Track when ball faded in on level 1 (for hint timing)
-				if (level === 1 && level1BallFadeInTime === null) {
-					level1BallFadeInTime = Date.now()
-				}
-				// Start fade-out for starting door when ball fade-in is complete
-				if (startingDoor && startingDoor.fadeOutStartTime === null) {
-					startingDoor.fadeOutStartTime = Date.now()
-					// Start hint fade-in 1 second after door fade-out starts (only on level 3)
-					if (level === 3 && !hasExecutedSwap && level3HintFadeInStartTime === null) {
-						level3HintFadeInStartTime = startingDoor.fadeOutStartTime + 1000
-					}
-				}
 				// Also clear initial intro flag if this was the first level
 				if (initialIntroActive && !hasCompletedALevel) {
 					initialIntroActive = false
+				}
+				// On level 1, show tutorial popup 1 second after ball fade-in completes
+				if (level === 1 && level1TutorialPopupStartTime === null) {
+					level1TutorialPopupStartTime = Date.now() + 1000
 				}
 			}
 		} else if (!wormholeTeleportPending && !ballHiddenForNextLevel) {
@@ -4575,30 +4440,6 @@ function draw() {
 			if (ball && ball.fadeInStartTime === undefined) {
 				ball.fadeOpacity = 1.0
 			}
-		}
-	}
-	
-	// Update starting door fade-in and fade-out
-	if (startingDoor) {
-		if (startingDoor.fadeOutStartTime !== null) {
-			// Handle fade-out
-			let elapsed = Date.now() - startingDoor.fadeOutStartTime
-			let fadeDuration = FADE_DURATION // Match fade-in duration
-			startingDoor.fadeInOpacity = Math.max(0.0, 1.0 - (elapsed / fadeDuration))
-			
-			// Clear starting door after fade-out completes
-			if (elapsed >= fadeDuration) {
-				// Start level 10 hint fade-in 1 second after door fades out
-				if (level === 10 && level10HintFadeInStartTime === null) {
-					level10HintFadeInStartTime = Date.now() + 1000
-				}
-				startingDoor = null
-			}
-		} else if (startingDoor.fadeInStartTime !== undefined && startingDoor.fadeInStartTime <= Date.now()) {
-			// Handle fade-in
-			let elapsed = Date.now() - startingDoor.fadeInStartTime
-			let fadeDuration = FADE_DURATION
-			startingDoor.fadeInOpacity = Math.min(1.0, elapsed / fadeDuration)
 		}
 	}
 	
@@ -4613,6 +4454,42 @@ function draw() {
 		}
 	}
 	
+	// Start fading out obstacles and special items 1 second after ball fade-out starts
+	if (ballFadeOutStartedTime !== null) {
+		let elapsedSinceBallFadeOut = Date.now() - ballFadeOutStartedTime
+		if (elapsedSinceBallFadeOut >= 1000) {
+			// 1 second has passed since ball fade-out started - start obstacle fade-out
+			if (obstacleFadeOutCompleteTime === null && obstacles.length > 0) {
+				// Mark when obstacles will finish fading (1 second from now)
+				obstacleFadeOutCompleteTime = Date.now() + FADE_DURATION
+			}
+			for (let j = 0; j < obstacles.length; j++) {
+				let obstacle = obstacles[j]
+				if (!obstacle.fading) {
+					obstacle.fadeOpacity = 1.0
+					obstacle.fading = true
+					obstacle.fadeOutStartTime = Date.now()
+				}
+			}
+			
+			// Remove special items so they disappear with the obstacles
+			star = null
+			switcher = null
+			cross = null
+			lightning = null
+			bush = null
+			wormhole = null
+		}
+	}
+	
+	// Generate next level after obstacles finish fading out
+	if (obstacleFadeOutCompleteTime !== null && Date.now() >= obstacleFadeOutCompleteTime && !isGeneratingLevel && ballHiddenForNextLevel) {
+		obstacleFadeOutCompleteTime = null
+		ballFadeOutStartedTime = null // Clear the tracking
+		isGeneratingLevel = true
+		generateLevel()
+	}
+	
 	// Update fade-in and fade-out for obstacles
 	for (let i = obstacles.length - 1; i >= 0; i--) {
 		let obstacle = obstacles[i]
@@ -4624,13 +4501,31 @@ function draw() {
 			obstacle.fadeInOpacity = Math.min(1.0, elapsed / fadeDuration)
 		}
 		
-		// Handle fade-out
-		if (obstacle.fading) {
-			obstacle.fadeOpacity -= 0.15 // Fade out very quickly (~0.2 seconds at 30fps)
-			if (obstacle.fadeOpacity <= 0) {
+		// Handle fade-out - match ball fade-out timing
+		if (obstacle.fading && obstacle.fadeOutStartTime !== undefined) {
+			let elapsed = Date.now() - obstacle.fadeOutStartTime
+			let fadeDuration = FADE_DURATION // Same duration as ball fade-out (1 second)
+			let t = Math.max(0.0, 1.0 - (elapsed / fadeDuration))
+			obstacle.fadeOpacity = t
+			if (t <= 0) {
 				obstacles.splice(i, 1)
 			}
 		}
+	}
+	
+	// Check if level 1 tutorial popup should be shown
+	if (level === 1 && level1TutorialPopupStartTime !== null && Date.now() >= level1TutorialPopupStartTime && !level1TutorialPopupVisible) {
+		level1TutorialPopupVisible = true
+	}
+	
+	// Check if level 1 step 2 tutorial should be shown
+	if (level === 1 && tries === 1 && level1Step2TutorialStartTime !== null && Date.now() >= level1Step2TutorialStartTime && !level1Step2TutorialVisible) {
+		level1Step2TutorialVisible = true
+	}
+	
+	// Check if level 1 step 3 tutorial should be shown
+	if (level === 1 && tries === 2 && level1Step3TutorialStartTime !== null && Date.now() >= level1Step3TutorialStartTime && !level1Step3TutorialVisible) {
+		level1Step3TutorialVisible = true
 	}
 	
 	drawTargets()
@@ -4639,50 +4534,74 @@ function draw() {
 	drawBush()
 	drawWormholes()
 	
-	// Draw starting door behind the ball
-	drawStartingDoor()
-	
 	// Draw ball after targets and obstacles so it appears on top
+	// Draw teleport electricity lines if ball is fading in or fading out
+	if (ball && (
+		(ball.fadeInStartTime !== undefined && ball.fadeInStartTime <= Date.now() && ball.fadeOpacity < 1.0) ||
+		(ballFadeOutStartTime !== null && ball.fadeOpacity < 1.0)
+	)) {
+		drawBallTeleportElectricity()
+	}
 	drawBall()
+	
+	// Draw level 1 instruction text (fixed position above initial ball position)
+	if (level === 1 && level1TutorialPopupVisible && level1InitialBallY !== null) {
+		let radius = getBallRadius()
+		ctx.save()
+		ctx.fillStyle = "#ffffff"
+		let fontSize = Math.min(24, canvas.width / 25)
+		ctx.font = "bold " + fontSize + "px Arial"
+		ctx.textAlign = "center"
+		ctx.textBaseline = "bottom"
+		// Fixed position: centered horizontally, positioned above initial ball position
+		let lineHeight = fontSize * 1.2 // Line spacing
+		let baseY = level1InitialBallY - radius - 50
+		ctx.fillText("1. Fling the smiley face", canvas.width / 2, baseY)
+		ctx.fillText("at the carrots", canvas.width / 2, baseY + lineHeight)
+		ctx.restore()
+	}
+	
+	// Draw level 1 step 2 instruction text (fixed position above initial ball position)
+	if (level === 1 && tries === 1 && level1Step2TutorialVisible && level1InitialBallY !== null) {
+		let radius = getBallRadius()
+		ctx.save()
+		ctx.fillStyle = "#ffffff"
+		let fontSize = Math.min(24, canvas.width / 25)
+		ctx.font = "bold " + fontSize + "px Arial"
+		ctx.textAlign = "center"
+		ctx.textBaseline = "bottom"
+		// Fixed position: centered horizontally, positioned above initial ball position
+		let lineHeight = fontSize * 1.2 // Line spacing
+		let baseY = level1InitialBallY - radius - 50
+		ctx.fillText("2. Get all the carrots in one shot", canvas.width / 2, baseY)
+		ctx.fillText("to move on to the next garden", canvas.width / 2, baseY + lineHeight)
+		ctx.restore()
+	}
+	
+	// Draw level 1 step 3 instruction text (fixed position above initial ball position)
+	if (level === 1 && tries === 2 && level1Step3TutorialVisible && level1InitialBallY !== null) {
+		let radius = getBallRadius()
+		ctx.save()
+		ctx.fillStyle = "#ffffff"
+		let fontSize = Math.min(24, canvas.width / 25)
+		ctx.font = "bold " + fontSize + "px Arial"
+		ctx.textAlign = "center"
+		ctx.textBaseline = "bottom"
+		// Fixed position: centered horizontally, positioned above initial ball position
+		let lineHeight = fontSize * 1.2 // Line spacing
+		let baseY = level1InitialBallY - radius - 50
+		ctx.fillText("3. Swap any two objects", canvas.width / 2, baseY)
+		ctx.fillText("by tapping them", canvas.width / 2, baseY + lineHeight)
+		ctx.restore()
+	}
 	
 	// Draw cross, star, and switcher after ball so they appear on top
 	drawStar()
 	drawSwitcher()
 	drawCross()
 	
-	// Update trophy fade-in and fade-out
-	if (trophy) {
-		if (doorFadeOutStartTime !== null) {
-			// Handle door fade-out - starts after ball is fully faded
-			let elapsed = Date.now() - doorFadeOutStartTime
-			let fadeDuration = 500 // 0.5 seconds to fade out
-			trophy.fadeInOpacity = Math.max(0.0, 1.0 - (elapsed / fadeDuration))
-			
-			// After door fade-out completes, wait 1 second then start next level
-			if (elapsed >= fadeDuration) {
-				trophy = null
-				doorFadeOutStartTime = null
-				// Start next level after door fade-out completes
-				if (!isGeneratingLevel) {
-					isGeneratingLevel = true
-					setTimeout(() => {
-						ballFadeOutStartTime = null
-						ballHiddenForNextLevel = false
-						generateLevel()
-					}, 1000)
-				}
-			}
-		} else if (trophy.fadeInOpacity !== undefined && trophy.fadeInOpacity < 1.0) {
-			// Handle fade-in
-			let elapsed = Date.now() - trophy.fadeInStartTime
-			let fadeDuration = 1000 // 1.0 seconds to fade in (slower)
-			trophy.fadeInOpacity = Math.min(1.0, elapsed / fadeDuration)
-		}
-	}
-	
-	// Draw the score first, then draw the door on top of everything (z-order)
+	// Draw the score first
 	drawCompletionScore()
-	drawTrophy()
 	
 	// Draw selection line between selected sprite and ball
 	drawSelectionLine()
@@ -4693,17 +4612,6 @@ function draw() {
 	// Draw victory drawing (user can draw when trophy is hit)
 	drawVictoryDrawing()
 	
-	// Draw level 3 swap hint if user hasn't swapped yet
-	drawLevel3SwapHint()
-	
-	// Draw level 2 hint if tries > 2
-	drawLevel2Hint()
-	
-	// Draw level 1 hint if 10 seconds passed and tries == 0
-	drawLevel1Hint()
-	
-	// Draw level 10 hint
-	drawLevel10Hint()
 }
 
 function createFireworks(x, y, color = "blue") {
@@ -4769,6 +4677,130 @@ function drawFireworks() {
 	}
 	
 	// Restore canvas state (resets all properties including alpha, fillStyle, etc.)
+	ctx.restore()
+}
+
+function drawBallTeleportElectricity() {
+	if (!ball) return
+	
+	let radius = getBallRadius()
+	let pos = getSwapAnimatedPosition(ball)
+	let ballX = pos.x
+	let ballY = pos.y
+	
+	// Only draw if ball is fading in or fading out
+	if (ball.fadeOpacity === undefined || ball.fadeOpacity >= 1.0) return
+	
+	ctx.save()
+	
+	// Time-based animation for electricity flicker
+	let time = Date.now() * 0.01
+	
+	// Calculate fade-in progress for opacity
+	let fadeProgress = ball.fadeOpacity || 0
+	let electricityOpacity = fadeProgress * 0.8 // Slightly less opaque than ball
+	
+	// Draw many electricity lines radiating from the ball
+	let lineCount = 20 // Number of electricity lines
+	let lineLength = radius * 3 // Length of each line
+	
+	for (let lineIndex = 0; lineIndex < lineCount; lineIndex++) {
+		// Calculate angle for this line (distribute evenly around the ball)
+		let baseAngle = (lineIndex / lineCount) * Math.PI * 2
+		// Add some variation to make it more chaotic
+		let angleVariation = Math.sin(time * 2 + lineIndex * 0.5) * 0.3
+		let angle = baseAngle + angleVariation
+		
+		// Calculate end point of the line
+		let endX = ballX + Math.cos(angle) * lineLength
+		let endY = ballY + Math.sin(angle) * lineLength
+		
+		// Calculate distance and direction
+		let dx = endX - ballX
+		let dy = endY - ballY
+		let distance = Math.hypot(dx, dy)
+		
+		if (distance < 1) continue
+		
+		// Normalize direction
+		let nx = dx / distance
+		let ny = dy / distance
+		// Perpendicular direction for offsets
+		let px = -ny
+		let py = nx
+		
+		// Draw glow effect (outer layer)
+		ctx.strokeStyle = `rgba(77, 208, 225, ${0.2 * electricityOpacity})`
+		ctx.lineWidth = 6
+		ctx.lineCap = "round"
+		ctx.lineJoin = "round"
+		ctx.beginPath()
+		ctx.moveTo(ballX, ballY)
+		ctx.lineTo(endX, endY)
+		ctx.stroke()
+		
+		// Draw main electricity line with jagged segments
+		let segments = Math.max(5, Math.floor(distance / 20))
+		
+		// Draw multiple electricity arcs for effect
+		for (let arc = 0; arc < 2; arc++) {
+			ctx.strokeStyle = arc === 0 
+				? `rgba(77, 208, 225, ${0.9 * electricityOpacity})` 
+				: `rgba(150, 230, 240, ${0.6 * electricityOpacity})`
+			ctx.lineWidth = arc === 0 ? 2 : 1
+			
+			ctx.beginPath()
+			ctx.moveTo(ballX, ballY)
+			
+			for (let i = 1; i < segments; i++) {
+				let t = i / segments
+				// Base position along the line
+				let baseX = ballX + dx * t
+				let baseY = ballY + dy * t
+				
+				// Add random offset perpendicular to the line (electricity jitter)
+				let noise1 = Math.sin(time + i * 3.7 + arc * 2.1 + lineIndex * 1.3) * 0.5 + Math.sin(time * 1.3 + i * 2.3 + lineIndex * 0.7) * 0.5
+				let noise2 = Math.cos(time * 0.8 + i * 4.1 + arc * 1.7 + lineIndex * 1.1) * 0.5 + Math.cos(time * 1.7 + i * 1.9 + lineIndex * 0.9) * 0.5
+				let offset = (noise1 + noise2) * 15 * (1 - Math.abs(t - 0.5) * 2) // Stronger in middle
+				
+				let jitterX = baseX + px * offset
+				let jitterY = baseY + py * offset
+				
+				ctx.lineTo(jitterX, jitterY)
+			}
+			
+			ctx.lineTo(endX, endY)
+			ctx.stroke()
+		}
+		
+		// Draw bright core
+		ctx.strokeStyle = `rgba(170, 235, 245, ${0.8 * electricityOpacity})`
+		ctx.lineWidth = 1
+		ctx.beginPath()
+		ctx.moveTo(ballX, ballY)
+		ctx.lineTo(endX, endY)
+		ctx.stroke()
+		
+		// Add small spark effects at the end
+		let sparkCount = 2
+		for (let i = 0; i < sparkCount; i++) {
+			let sparkAngle = time * 2 + i * (Math.PI * 2 / sparkCount) + lineIndex * 0.5
+			let sparkLen = 6 + Math.sin(time * 3 + i + lineIndex) * 3
+			
+			ctx.strokeStyle = `rgba(150, 230, 240, ${0.8 * electricityOpacity})`
+			ctx.lineWidth = 1
+			
+			// Spark at end
+			ctx.beginPath()
+			ctx.moveTo(endX, endY)
+			ctx.lineTo(
+				endX + Math.cos(sparkAngle) * sparkLen,
+				endY + Math.sin(sparkAngle) * sparkLen
+			)
+			ctx.stroke()
+		}
+	}
+	
 	ctx.restore()
 }
 
@@ -5090,115 +5122,81 @@ function drawTargets() {
 		ctx.save()
 		ctx.globalAlpha = opacity
 		
-		// Draw trophy scaled to match visual size of other objects (ball, obstacles)
-		// Scale factor to make trophy appear as large as a circle with the same radius
-		let scale = 1.6
-		let scaledRadius = radius * scale
+		// Draw carrot
+		let carrotWidth = radius * 0.8
+		let carrotHeight = radius * 1.6
 		
-		// Draw trophy in gold/yellow with gradient
-		let gradient = ctx.createLinearGradient(x, y - scaledRadius, x, y + scaledRadius)
-		gradient.addColorStop(0, "#ffed4e") // Lighter gold at top
-		gradient.addColorStop(0.5, "#ffd700") // Gold in middle
-		gradient.addColorStop(1, "#daa520") // Darker gold at bottom
-		ctx.fillStyle = gradient
-		ctx.strokeStyle = "#b8860b" // Dark gold for outline
-		ctx.lineWidth = Math.max(1, radius * 0.1)
+		// Carrot body (orange, tapered from top to bottom)
+		let carrotTopY = y - carrotHeight * 0.4
+		let carrotBottomY = y + carrotHeight * 0.4
+		let carrotTopWidth = carrotWidth * 0.3
+		let carrotBottomWidth = carrotWidth * 0.6
 		
-		// Trophy base (bottom, wider and perfectly centered)
-		let baseWidth = scaledRadius * 1.0
-		let baseHeight = scaledRadius * 0.15
-		let baseY = y + scaledRadius * 0.35
+		// Orange gradient for carrot body
+		let carrotGradient = ctx.createLinearGradient(x, carrotTopY, x, carrotBottomY)
+		carrotGradient.addColorStop(0, "#ff8c42") // Lighter orange at top
+		carrotGradient.addColorStop(0.5, "#ff7f50") // Orange in middle
+		carrotGradient.addColorStop(1, "#ff6347") // Darker orange at bottom
+		ctx.fillStyle = carrotGradient
+		ctx.strokeStyle = "#ff4500" // Dark orange outline
+		ctx.lineWidth = Math.max(1, radius * 0.08)
+		
+		// Draw carrot body (tapered shape)
 		ctx.beginPath()
-		ctx.rect(x - baseWidth / 2, baseY, baseWidth, baseHeight)
-		ctx.fill()
-		ctx.stroke()
-		
-		// Trophy stem/pedestal (connects base to cup, perfectly centered)
-		let stemWidth = scaledRadius * 0.3
-		let stemHeight = scaledRadius * 0.2
-		let stemY = y + scaledRadius * 0.15
-		ctx.beginPath()
-		ctx.rect(x - stemWidth / 2, stemY, stemWidth, stemHeight)
-		ctx.fill()
-		ctx.stroke()
-		
-		// Trophy cup/bowl (main body, perfectly symmetrical)
-		let cupBottomY = stemY
-		let cupTopY = y - scaledRadius * 0.3
-		let cupBottomWidth = scaledRadius * 0.4
-		let cupTopWidth = scaledRadius * 0.7
-		let cupInnerTopWidth = scaledRadius * 0.4
-		
-		ctx.beginPath()
-		// Start at bottom left
-		ctx.moveTo(x - cupBottomWidth / 2, cupBottomY)
-		// Left side curve (symmetric)
-		ctx.quadraticCurveTo(
-			x - cupTopWidth / 2, (cupBottomY + cupTopY) / 2,
-			x - cupTopWidth / 2, cupTopY
-		)
-		// Top rim left
-		ctx.lineTo(x - cupInnerTopWidth / 2, cupTopY)
-		// Inner left edge
-		ctx.lineTo(x - cupInnerTopWidth / 2, cupTopY + scaledRadius * 0.1)
-		// Inner bottom curve (symmetric)
-		ctx.quadraticCurveTo(x, cupTopY + scaledRadius * 0.15, x + cupInnerTopWidth / 2, cupTopY + scaledRadius * 0.1)
-		// Inner right edge
-		ctx.lineTo(x + cupInnerTopWidth / 2, cupTopY)
-		// Top rim right
-		ctx.lineTo(x + cupTopWidth / 2, cupTopY)
-		// Right side curve (symmetric to left)
-		ctx.quadraticCurveTo(
-			x + cupTopWidth / 2, (cupBottomY + cupTopY) / 2,
-			x + cupBottomWidth / 2, cupBottomY
-		)
+		ctx.moveTo(x - carrotTopWidth / 2, carrotTopY)
+		ctx.lineTo(x - carrotBottomWidth / 2, carrotBottomY)
+		ctx.lineTo(x + carrotBottomWidth / 2, carrotBottomY)
+		ctx.lineTo(x + carrotTopWidth / 2, carrotTopY)
 		ctx.closePath()
 		ctx.fill()
 		ctx.stroke()
 		
-		// Trophy handles (perfectly symmetrical C-shaped handles)
-		let handleRadius = scaledRadius * 0.2
-		let handleXOffset = scaledRadius * 0.45
-		let handleY = y - scaledRadius * 0.05
-		let handleThickness = scaledRadius * 0.12
-		
-		// Left handle (C-shaped, opening to the right)
+		// Carrot lines/texture (vertical lines)
+		ctx.strokeStyle = "#ff4500"
+		ctx.lineWidth = Math.max(1, radius * 0.04)
 		ctx.beginPath()
-		ctx.arc(x - handleXOffset, handleY, handleRadius, Math.PI * 0.5, Math.PI * 1.5, false)
-		ctx.lineWidth = handleThickness
-		ctx.lineCap = "round"
+		// Left line
+		ctx.moveTo(x - carrotWidth * 0.15, carrotTopY + carrotHeight * 0.1)
+		ctx.lineTo(x - carrotWidth * 0.25, carrotBottomY - carrotHeight * 0.1)
+		ctx.stroke()
+		// Right line
+		ctx.beginPath()
+		ctx.moveTo(x + carrotWidth * 0.15, carrotTopY + carrotHeight * 0.1)
+		ctx.lineTo(x + carrotWidth * 0.25, carrotBottomY - carrotHeight * 0.1)
+		ctx.stroke()
+		// Center line
+		ctx.beginPath()
+		ctx.moveTo(x, carrotTopY + carrotHeight * 0.15)
+		ctx.lineTo(x, carrotBottomY - carrotHeight * 0.15)
 		ctx.stroke()
 		
-		// Right handle (C-shaped, opening to the left, perfectly mirrored)
-		ctx.beginPath()
-		ctx.arc(x + handleXOffset, handleY, handleRadius, Math.PI * 1.5, Math.PI * 0.5, false)
-		ctx.stroke()
-		
-		// Star on top (perfectly centered, 5-pointed star)
-		ctx.fillStyle = "#ffd700"
-		ctx.strokeStyle = "#ffaa00"
+		// Carrot top/greens (green leaves at the top)
+		let greensY = carrotTopY - radius * 0.2
+		ctx.fillStyle = "#228b22" // Forest green
+		ctx.strokeStyle = "#006400" // Dark green
 		ctx.lineWidth = Math.max(1, radius * 0.05)
-		ctx.beginPath()
-		let starX = x
-		let starY = y - scaledRadius * 0.4
-		let starOuterRadius = scaledRadius * 0.15
-		let starInnerRadius = starOuterRadius * 0.5
-		let starPoints = 5
 		
-		for (let i = 0; i < starPoints * 2; i++) {
-			let angle = (Math.PI * i) / starPoints - Math.PI / 2
-			let r = (i % 2 === 0) ? starOuterRadius : starInnerRadius
-			let px = starX + Math.cos(angle) * r
-			let py = starY + Math.sin(angle) * r
-			if (i === 0) {
-				ctx.moveTo(px, py)
-			} else {
-				ctx.lineTo(px, py)
-			}
+		// Draw 3-4 leaf stems
+		let leafCount = 3
+		for (let i = 0; i < leafCount; i++) {
+			let angle = (i / leafCount) * Math.PI * 2 - Math.PI / 2
+			let leafX = x + Math.cos(angle) * radius * 0.15
+			let leafY = greensY + Math.sin(angle) * radius * 0.1
+			let leafLength = radius * 0.3
+			
+			ctx.beginPath()
+			ctx.moveTo(x, carrotTopY)
+			ctx.lineTo(leafX, leafY)
+			ctx.lineWidth = Math.max(2, radius * 0.06)
+			ctx.lineCap = "round"
+			ctx.stroke()
+			
+			// Small leaf at the end
+			ctx.beginPath()
+			ctx.ellipse(leafX, leafY, radius * 0.08, radius * 0.12, angle, 0, 2 * Math.PI)
+			ctx.fill()
+			ctx.stroke()
 		}
-		ctx.closePath()
-		ctx.fill()
-		ctx.stroke()
 		
 		ctx.restore()
 	}
@@ -5488,78 +5486,6 @@ function drawCross() {
 	ctx.restore()
 }
 
-function drawStartingDoor() {
-	if (!startingDoor) return
-	
-	let radius = startingDoor.radius
-	let x = startingDoor.xPos
-	let y = startingDoor.yPos
-	
-	// Get opacity (fade-in, fade-out, or default to 1.0)
-	let opacity = startingDoor.fadeInOpacity !== undefined ? startingDoor.fadeInOpacity : 1.0
-	
-	ctx.save()
-	ctx.globalAlpha = opacity
-	
-	// Draw small door (scaled down version of the trophy door)
-	let doorWidth = radius * 1.2
-	let doorHeight = radius * 2.0
-	let doorTop = y - doorHeight / 2
-	let doorLeft = x - doorWidth / 2
-	
-	// Door frame (darker brown)
-	ctx.fillStyle = "#5d4037"
-	ctx.strokeStyle = "#3e2723"
-	ctx.lineWidth = Math.max(2, radius * 0.1)
-	ctx.beginPath()
-	ctx.rect(doorLeft - radius * 0.1, doorTop - radius * 0.1, doorWidth + radius * 0.2, doorHeight + radius * 0.2)
-	ctx.fill()
-	ctx.stroke()
-	
-	// Door panel (brown wood)
-	let doorGradient = ctx.createLinearGradient(doorLeft, doorTop, doorLeft + doorWidth, doorTop + doorHeight)
-	doorGradient.addColorStop(0, "#8d6e63")
-	doorGradient.addColorStop(0.5, "#6d4c41")
-	doorGradient.addColorStop(1, "#5d4037")
-	ctx.fillStyle = doorGradient
-	ctx.strokeStyle = "#3e2723"
-	ctx.lineWidth = Math.max(1, radius * 0.08)
-	ctx.beginPath()
-	ctx.rect(doorLeft, doorTop, doorWidth, doorHeight)
-	ctx.fill()
-	ctx.stroke()
-	
-	// Door handle (brass/gold)
-	ctx.fillStyle = "#d4af37"
-	ctx.strokeStyle = "#b8860b"
-	ctx.lineWidth = Math.max(1, radius * 0.05)
-	let handleX = doorLeft + doorWidth * 0.85
-	let handleY = y
-	let handleSize = radius * 0.15
-	ctx.beginPath()
-	ctx.arc(handleX, handleY, handleSize, 0, 2 * Math.PI)
-	ctx.fill()
-	ctx.stroke()
-	
-	// Door panels (decorative lines)
-	ctx.strokeStyle = "#4e342e"
-	ctx.lineWidth = Math.max(1, radius * 0.06)
-	// Vertical line down the middle
-	ctx.beginPath()
-	ctx.moveTo(x, doorTop)
-	ctx.lineTo(x, doorTop + doorHeight)
-	ctx.stroke()
-	// Horizontal lines (top, middle, bottom)
-	ctx.beginPath()
-	ctx.moveTo(doorLeft, doorTop + doorHeight * 0.33)
-	ctx.lineTo(doorLeft + doorWidth, doorTop + doorHeight * 0.33)
-	ctx.moveTo(doorLeft, doorTop + doorHeight * 0.67)
-	ctx.lineTo(doorLeft + doorWidth, doorTop + doorHeight * 0.67)
-	ctx.stroke()
-	
-	ctx.restore()
-}
-
 function drawTrophy() {
 	if (!trophy) return
 	
@@ -5714,7 +5640,7 @@ function drawSelectionLine() {
 	let time = Date.now() * 0.01
 	
 	// Draw glow effect (outer layer)
-	ctx.strokeStyle = "rgba(0, 255, 100, 0.3)"
+	ctx.strokeStyle = "rgba(77, 208, 225, 0.3)"
 	ctx.lineWidth = 8
 	ctx.lineCap = "round"
 	ctx.lineJoin = "round"
@@ -5728,7 +5654,7 @@ function drawSelectionLine() {
 	
 	// Draw multiple electricity arcs for effect
 	for (let arc = 0; arc < 3; arc++) {
-		ctx.strokeStyle = arc === 0 ? "#00ff66" : "rgba(150, 255, 200, 0.6)"
+		ctx.strokeStyle = arc === 0 ? "#4dd0e1" : "rgba(150, 230, 240, 0.6)"
 		ctx.lineWidth = arc === 0 ? 2 : 1
 		
 		ctx.beginPath()
@@ -5757,7 +5683,7 @@ function drawSelectionLine() {
 	}
 	
 	// Draw bright core
-	ctx.strokeStyle = "#aaffcc"
+	ctx.strokeStyle = "#aae6f0"
 	ctx.lineWidth = 1
 	ctx.beginPath()
 	ctx.moveTo(spriteX, spriteY)
@@ -5770,7 +5696,7 @@ function drawSelectionLine() {
 		let sparkAngle = time * 2 + i * (Math.PI * 2 / sparkCount)
 		let sparkLen = 8 + Math.sin(time * 3 + i) * 4
 		
-		ctx.strokeStyle = "rgba(150, 255, 200, 0.8)"
+		ctx.strokeStyle = "rgba(150, 230, 240, 0.8)"
 		ctx.lineWidth = 1
 		
 		// Spark at sprite end
@@ -5835,7 +5761,7 @@ function drawSwapAnimationLines() {
 		let time = Date.now() * 0.01
 		
 		// Draw glow effect (outer layer)
-		ctx.strokeStyle = "rgba(0, 255, 100, 0.3)"
+		ctx.strokeStyle = "rgba(77, 208, 225, 0.3)"
 		ctx.lineWidth = 8
 		ctx.lineCap = "round"
 		ctx.lineJoin = "round"
@@ -5849,7 +5775,7 @@ function drawSwapAnimationLines() {
 		
 		// Draw multiple electricity arcs for effect
 		for (let arc = 0; arc < 3; arc++) {
-			ctx.strokeStyle = arc === 0 ? "#00ff66" : "rgba(150, 255, 200, 0.6)"
+			ctx.strokeStyle = arc === 0 ? "#4dd0e1" : "rgba(150, 230, 240, 0.6)"
 			ctx.lineWidth = arc === 0 ? 2 : 1
 			
 			ctx.beginPath()
@@ -5877,7 +5803,7 @@ function drawSwapAnimationLines() {
 		}
 		
 		// Draw bright core
-		ctx.strokeStyle = "#aaffcc"
+		ctx.strokeStyle = "#aae6f0"
 		ctx.lineWidth = 1
 		ctx.beginPath()
 		ctx.moveTo(spriteX, spriteY)
@@ -5890,7 +5816,7 @@ function drawSwapAnimationLines() {
 			let sparkAngle = time * 2 + i * (Math.PI * 2 / sparkCount)
 			let sparkLen = 8 + Math.sin(time * 3 + i) * 4
 			
-			ctx.strokeStyle = "rgba(150, 255, 200, 0.8)"
+			ctx.strokeStyle = "rgba(150, 230, 240, 0.8)"
 			ctx.lineWidth = 1
 			
 			// Spark at sprite end
@@ -5922,12 +5848,12 @@ function drawVictoryDrawing() {
 	
 	ctx.save()
 	
-	// Draw all completed strokes in neon green
-	ctx.strokeStyle = "#00ff66"
+	// Draw all completed strokes in neon teal
+	ctx.strokeStyle = "#4dd0e1"
 	ctx.lineWidth = 3
 	ctx.lineCap = "round"
 	ctx.lineJoin = "round"
-	ctx.shadowColor = "#00ff66"
+	ctx.shadowColor = "#4dd0e1"
 	ctx.shadowBlur = 10
 	
 	for (let stroke of victoryDrawingStrokes) {
@@ -5975,7 +5901,7 @@ function drawVictoryDrawing() {
 			
 			// Draw glow effect (outer layer)
 			ctx.shadowBlur = 0
-			ctx.strokeStyle = "rgba(0, 255, 100, 0.3)"
+			ctx.strokeStyle = "rgba(77, 208, 225, 0.3)"
 			ctx.lineWidth = 8
 			ctx.lineCap = "round"
 			ctx.lineJoin = "round"
@@ -5989,7 +5915,7 @@ function drawVictoryDrawing() {
 			
 			// Draw multiple electricity arcs for effect
 			for (let arc = 0; arc < 3; arc++) {
-				ctx.strokeStyle = arc === 0 ? "#00ff66" : "rgba(150, 255, 200, 0.6)"
+				ctx.strokeStyle = arc === 0 ? "#4dd0e1" : "rgba(150, 230, 240, 0.6)"
 				ctx.lineWidth = arc === 0 ? 2 : 1
 				
 				ctx.beginPath()
@@ -6017,7 +5943,7 @@ function drawVictoryDrawing() {
 			}
 			
 			// Draw bright core
-			ctx.strokeStyle = "#aaffcc"
+			ctx.strokeStyle = "#aae6f0"
 			ctx.lineWidth = 1
 			ctx.beginPath()
 			ctx.moveTo(touchX, touchY)
@@ -6030,7 +5956,7 @@ function drawVictoryDrawing() {
 				let sparkAngle = time * 2 + i * (Math.PI * 2 / sparkCount)
 				let sparkLen = 8 + Math.sin(time * 3 + i) * 4
 				
-				ctx.strokeStyle = "rgba(150, 255, 200, 0.8)"
+				ctx.strokeStyle = "rgba(150, 230, 240, 0.8)"
 				ctx.lineWidth = 1
 				
 				// Spark at touch end
@@ -6057,393 +5983,6 @@ function drawVictoryDrawing() {
 	ctx.restore()
 }
 
-// Draw swap hint on level 3 if user hasn't executed a swap yet
-function drawLevel3SwapHint() {
-	if (level !== 3 || hasExecutedSwap) return
-	
-	// Generate random position if not set yet
-	if (!level3HintPosition) {
-		level3HintPosition = getTutorialStep1Position()
-	}
-	
-	if (!level3HintPosition) return
-	
-	// Calculate fade-in opacity
-	let fadeInOpacity = 1.0
-	if (level3HintFadeInStartTime !== null && level3HintFadeInStartTime > Date.now()) {
-		// Not time to fade in yet
-		fadeInOpacity = 0.0
-	} else if (level3HintFadeInStartTime !== null) {
-		// Fade in
-		let elapsed = Date.now() - level3HintFadeInStartTime
-		let fadeDuration = FADE_DURATION // 1 second
-		fadeInOpacity = Math.min(1.0, elapsed / fadeDuration)
-	} else {
-		// If door hasn't faded out yet, don't show hint
-		if (startingDoor) {
-			fadeInOpacity = 0.0
-		}
-	}
-	
-	// Calculate fade-out opacity
-	let fadeOutOpacity = 1.0
-	if (level3HintFadeOutStartTime !== null) {
-		let elapsed = Date.now() - level3HintFadeOutStartTime
-		let fadeDuration = FADE_DURATION // 1 second
-		fadeOutOpacity = Math.max(0.0, 1.0 - (elapsed / fadeDuration))
-	}
-	
-	let opacity = fadeInOpacity * fadeOutOpacity
-	
-	if (opacity <= 0) return // Don't draw if invisible
-	
-	ctx.save()
-	ctx.font = "24px Arial"
-	ctx.textAlign = "center"
-	ctx.textBaseline = "middle"
-	ctx.globalAlpha = opacity
-	
-	let line1 = "hint: swap any two items"
-	let line2 = "by tapping them"
-	let x = level3HintPosition.x
-	let y = level3HintPosition.y
-	let lineHeight = 28 // Spacing between lines
-	
-	// Draw text shadow for readability
-	ctx.globalAlpha = opacity * 0.5
-	ctx.fillStyle = "black"
-	ctx.fillText(line1, x + 1, y - lineHeight / 2 + 1)
-	ctx.fillText(line2, x + 1, y + lineHeight / 2 + 1)
-	
-	// Draw main text in white
-	ctx.globalAlpha = opacity
-	ctx.fillStyle = "white"
-	ctx.fillText(line1, x, y - lineHeight / 2)
-	ctx.fillText(line2, x, y + lineHeight / 2)
-	
-	ctx.restore()
-}
-
-// Draw level 2 hint if tries >= 3 and auto-reset has completed (show until last target is hit)
-function drawLevel2Hint() {
-	if (level !== 2 || tries < 3) return
-	
-	// Generate random position if not set yet
-	if (!level2HintPosition) {
-		level2HintPosition = getTutorialStep1Position()
-	}
-	
-	if (!level2HintPosition) return
-	
-	// Calculate fade-in opacity
-	let fadeInOpacity = 1.0
-	if (level2HintFadeInStartTime !== null) {
-		// Fade in
-		let elapsed = Date.now() - level2HintFadeInStartTime
-		let fadeDuration = FADE_DURATION // 1 second
-		fadeInOpacity = Math.min(1.0, elapsed / fadeDuration)
-	} else {
-		// Not time to fade in yet (waiting for auto-reset to complete)
-		fadeInOpacity = 0.0
-	}
-	
-	// Calculate fade-out opacity
-	let fadeOutOpacity = 1.0
-	if (level2HintFadeOutStartTime !== null) {
-		let elapsed = Date.now() - level2HintFadeOutStartTime
-		let fadeDuration = FADE_DURATION // 1 second
-		fadeOutOpacity = Math.max(0.0, 1.0 - (elapsed / fadeDuration))
-	}
-	
-	let opacity = fadeInOpacity * fadeOutOpacity
-	
-	if (opacity <= 0) return // Don't draw if invisible
-	
-	ctx.save()
-	ctx.font = "24px Arial"
-	ctx.textAlign = "center"
-	ctx.textBaseline = "middle"
-	ctx.globalAlpha = opacity
-	
-	let line1 = "hint: collect all the trophies"
-	let line2 = "in one shot to move on"
-	let x = level2HintPosition.x
-	let y = level2HintPosition.y
-	let lineHeight = 28 // Spacing between lines
-	
-	// Draw text shadow for readability
-	ctx.globalAlpha = opacity * 0.5
-	ctx.fillStyle = "black"
-	ctx.fillText(line1, x + 1, y - lineHeight / 2 + 1)
-	ctx.fillText(line2, x + 1, y + lineHeight / 2 + 1)
-	
-	// Draw main text in white
-	ctx.globalAlpha = opacity
-	ctx.fillStyle = "white"
-	ctx.fillText(line1, x, y - lineHeight / 2)
-	ctx.fillText(line2, x, y + lineHeight / 2)
-	
-	ctx.restore()
-}
-
-// Draw level 1 hint if 10 seconds have passed since ball faded in
-function drawLevel1Hint() {
-	if (level !== 1 || level1BallFadeInTime === null) return
-	
-	// Check if 10 seconds have passed since ball faded in
-	let timeSinceFadeIn = Date.now() - level1BallFadeInTime
-	if (timeSinceFadeIn < 10000) return // Not 10 seconds yet
-	
-	// Generate random position if not set yet
-	if (!level1HintPosition) {
-		level1HintPosition = getTutorialStep1Position()
-	}
-	
-	if (!level1HintPosition) return
-	
-	// Calculate fade-in opacity (fade in over 1 second after the 10 second mark)
-	let fadeInOpacity = 1.0
-	let timeSinceTrigger = timeSinceFadeIn - 10000
-	if (timeSinceTrigger < 0) {
-		fadeInOpacity = 0.0
-	} else {
-		let fadeDuration = FADE_DURATION // 1 second
-		fadeInOpacity = Math.min(1.0, timeSinceTrigger / fadeDuration)
-	}
-	
-	// Calculate fade-out opacity
-	let fadeOutOpacity = 1.0
-	if (level1HintFadeOutStartTime !== null) {
-		let elapsed = Date.now() - level1HintFadeOutStartTime
-		let fadeDuration = FADE_DURATION // 1 second
-		fadeOutOpacity = Math.max(0.0, 1.0 - (elapsed / fadeDuration))
-	}
-	
-	let opacity = fadeInOpacity * fadeOutOpacity
-	
-	if (opacity <= 0) return // Don't draw if invisible
-	
-	ctx.save()
-	ctx.font = "24px Arial"
-	ctx.textAlign = "center"
-	ctx.textBaseline = "middle"
-	ctx.globalAlpha = opacity
-	
-	let line1 = "hint: fling the smiley face"
-	let line2 = "at the trophy"
-	let x = level1HintPosition.x
-	let y = level1HintPosition.y
-	let lineHeight = 28 // Spacing between lines
-	
-	// Draw text shadow for readability
-	ctx.globalAlpha = opacity * 0.5
-	ctx.fillStyle = "black"
-	ctx.fillText(line1, x + 1, y - lineHeight / 2 + 1)
-	ctx.fillText(line2, x + 1, y + lineHeight / 2 + 1)
-	
-	// Draw main text in white
-	ctx.globalAlpha = opacity
-	ctx.fillStyle = "white"
-	ctx.fillText(line1, x, y - lineHeight / 2)
-	ctx.fillText(line2, x, y + lineHeight / 2)
-	
-	ctx.restore()
-}
-
-// Draw level 10 hint
-function drawLevel10Hint() {
-	if (level !== 10) return
-	
-	// Generate random position if not set yet
-	if (!level10HintPosition) {
-		level10HintPosition = getTutorialStep1Position()
-	}
-	
-	if (!level10HintPosition) return
-	
-	// Calculate fade-in opacity (fade in 1 second after door fades out, like level 3)
-	let fadeInOpacity = 1.0
-	if (level10HintFadeInStartTime !== null && level10HintFadeInStartTime > Date.now()) {
-		// Not time to fade in yet
-		fadeInOpacity = 0.0
-	} else if (level10HintFadeInStartTime !== null) {
-		// Fade in
-		let elapsed = Date.now() - level10HintFadeInStartTime
-		let fadeDuration = FADE_DURATION // 1 second
-		fadeInOpacity = Math.min(1.0, elapsed / fadeDuration)
-	} else {
-		// If door hasn't faded out yet, don't show hint
-		if (startingDoor) {
-			fadeInOpacity = 0.0
-		}
-	}
-	
-	// Calculate fade-out opacity
-	let fadeOutOpacity = 1.0
-	if (level10HintFadeOutStartTime !== null) {
-		let elapsed = Date.now() - level10HintFadeOutStartTime
-		let fadeDuration = FADE_DURATION // 1 second
-		fadeOutOpacity = Math.max(0.0, 1.0 - (elapsed / fadeDuration))
-	}
-	
-	let opacity = fadeInOpacity * fadeOutOpacity
-	
-	if (opacity <= 0) return // Don't draw if invisible
-	
-	ctx.save()
-	ctx.font = "24px Arial"
-	ctx.textAlign = "center"
-	ctx.textBaseline = "middle"
-	ctx.globalAlpha = opacity
-	
-	let line1 = "hint: skip any level"
-	let line2 = "by tapping the score"
-	let x = level10HintPosition.x
-	let y = level10HintPosition.y
-	let lineHeight = 28 // Spacing between lines
-	
-	// Draw text shadow for readability
-	ctx.globalAlpha = opacity * 0.5
-	ctx.fillStyle = "black"
-	ctx.fillText(line1, x + 1, y - lineHeight / 2 + 1)
-	ctx.fillText(line2, x + 1, y + lineHeight / 2 + 1)
-	
-	// Draw main text in white
-	ctx.globalAlpha = opacity
-	ctx.fillStyle = "white"
-	ctx.fillText(line1, x, y - lineHeight / 2)
-	ctx.fillText(line2, x, y + lineHeight / 2)
-	
-	ctx.restore()
-}
-
-// Get a random position for the hint that avoids sprites and edges
-function getTutorialStep1Position() {
-	// Calculate the same way tutorial step 1 does, but 1 ball radius higher
-	let padding = 40
-	let textShadowBuffer = 20
-	let measuredWidth = 300 // Approximate text width
-	let measuredHeight = 30 // Approximate text height
-	let textWidth = measuredWidth + textShadowBuffer * 2
-	let textHeight = measuredHeight + textShadowBuffer * 2
-	let textHalfWidth = textWidth / 2
-	let textHalfHeight = textHeight / 2
-	
-	// Base centered position
-	let xPos = canvas.width / 2
-	let yPos = canvas.height * 0.5
-	
-	// Position the text above the ball (1 ball radius higher than tutorial step 1)
-	let ballRadius = getBallRadius()
-	let paddingY = padding
-	let topExclusionY = canvas.height * 0.2
-	// Place the text four ball-radii (2 diameters) above the ball (1 radius higher than tutorial step 1).
-	let baseY = (ball?.yPos ?? (canvas.height - paddingY - textHalfHeight)) - (4 * ballRadius)
-	// Clamp inside safe region.
-	yPos = Math.max(
-		topExclusionY + textHalfHeight + paddingY,
-		Math.min(baseY, canvas.height - paddingY - textHalfHeight)
-	)
-	
-	return { x: xPos, y: yPos }
-}
-
-function getRandomHintPosition() {
-	let padding = 80 // Distance from edges
-	let spriteBuffer = 120 // Distance from sprites (increased for more spacing)
-	
-	// Measure text width to avoid placing it where it would go off screen
-	// Use the wider of all possible hint texts (level 1, 2, 3, or 10)
-	ctx.save()
-	ctx.font = "24px Arial"
-	let level3Line1Width = ctx.measureText("hint: swap any two items").width
-	let level3Line2Width = ctx.measureText("by tapping them").width
-	let level2Line1Width = ctx.measureText("hint: collect all the trophies").width
-	let level2Line2Width = ctx.measureText("in one shot to move on").width
-	let level1Line1Width = ctx.measureText("hint: fling the smiley face").width
-	let level1Line2Width = ctx.measureText("at the trophy").width
-	let level10Line1Width = ctx.measureText("hint: skip any level").width
-	let level10Line2Width = ctx.measureText("by tapping the score").width
-	let maxLevel3Width = Math.max(level3Line1Width, level3Line2Width)
-	let maxLevel2Width = Math.max(level2Line1Width, level2Line2Width)
-	let maxLevel1Width = Math.max(level1Line1Width, level1Line2Width)
-	let maxLevel10Width = Math.max(level10Line1Width, level10Line2Width)
-	let textWidth = Math.max(maxLevel3Width, maxLevel2Width, maxLevel1Width, maxLevel10Width) // Use the widest line
-	ctx.restore()
-	
-	let minX = padding + textWidth / 2
-	let maxX = canvas.width - padding - textWidth / 2
-	let minY = padding
-	let maxY = canvas.height - padding
-	
-	// Try to find a valid position (max 50 attempts)
-	for (let attempt = 0; attempt < 50; attempt++) {
-		let x = minX + Math.random() * (maxX - minX)
-		let y = minY + Math.random() * (maxY - minY)
-		
-		// Check distance from all sprites
-		let tooClose = false
-		
-		// Check ball
-		if (ball) {
-			let dist = Math.hypot(x - ball.xPos, y - ball.yPos)
-			if (dist < spriteBuffer + getBallRadius()) tooClose = true
-		}
-		
-		// Check targets
-		for (let target of targetsRemaining) {
-			let dist = Math.hypot(x - target.xPos, y - target.yPos)
-			if (dist < spriteBuffer + getTargetRadius()) tooClose = true
-		}
-		
-		// Check obstacles
-		for (let obstacle of obstacles) {
-			let dist = Math.hypot(x - obstacle.xPos, y - obstacle.yPos)
-			if (dist < spriteBuffer + obstacle.radius) tooClose = true
-		}
-		
-		// Check special items
-		if (star) {
-			let dist = Math.hypot(x - star.xPos, y - star.yPos)
-			if (dist < spriteBuffer + star.radius) tooClose = true
-		}
-		if (switcher) {
-			let dist = Math.hypot(x - switcher.xPos, y - switcher.yPos)
-			if (dist < spriteBuffer + switcher.radius) tooClose = true
-		}
-		if (cross) {
-			let dist = Math.hypot(x - cross.xPos, y - cross.yPos)
-			if (dist < spriteBuffer + cross.radius) tooClose = true
-		}
-		if (lightning) {
-			let dist = Math.hypot(x - lightning.xPos, y - lightning.yPos)
-			if (dist < spriteBuffer + lightning.radius) tooClose = true
-		}
-		if (bush) {
-			let dist = Math.hypot(x - bush.xPos, y - bush.yPos)
-			if (dist < spriteBuffer + bush.radius) tooClose = true
-		}
-		if (wormhole) {
-			for (let wh of wormhole) {
-				if (wh) {
-					let dist = Math.hypot(x - wh.xPos, y - wh.yPos)
-					if (dist < spriteBuffer + wh.radius) tooClose = true
-				}
-			}
-		}
-		if (trophy) {
-			let dist = Math.hypot(x - trophy.xPos, y - trophy.yPos)
-			if (dist < spriteBuffer + trophy.radius) tooClose = true
-		}
-		
-		if (!tooClose) {
-			return { x, y }
-		}
-	}
-	
-	// Fallback: return center of screen
-	return { x: canvas.width / 2, y: canvas.height / 2 }
-}
 
 function getScoreCenter() {
 	let scoreTextX = canvas.width - 12
@@ -6538,90 +6077,6 @@ function drawCompletionScore() {
 			scoreIncrementDisplay.opacity = Math.max(0, scoreIncrementDisplay.timeLeft / SCORE_INCREMENT_FADE_DURATION)
 		}
 	}
-}
-
-function updateTutorial() {
-	let tutorialOverlay = document.getElementById("tutorialOverlay")
-	if (!tutorialOverlay || !canvas) return
-	
-	// Tutorial runs:
-	// - Level 1: steps 1–3 (fling, hit, swap).
-	// - Level 2: steps 3–4 (start at swap, then show the final hint).
-	if ((level === 1 && (tutorialStep === 0 || tutorialCompleted)) ||
-	    (level === 2 && tutorialStep === 0) ||
-	    (level !== 1 && level !== 2)) {
-		tutorialOverlay.style.opacity = "0"
-		tutorialOverlay.style.visibility = "hidden"
-		tutorialOverlay.textContent = ""
-		return
-	}
-	
-	let text = ""
-	if (level === 1) {
-		if (tutorialStep === 1) {
-			text = "Fling the grey ball"
-		} else if (tutorialStep === 2) {
-			text = "Hit all the blue balls in one shot"
-		} else if (tutorialStep === 3) {
-			text = "Swap any two items by tapping them"
-		}
-	} else if (level === 2) {
-		if (tutorialStep === 3) {
-			text = "Swap any two items by tapping them"
-		} else if (tutorialStep === 4) {
-			text = "Think carefully, aim true, and achieve victory!"
-		}
-	}
-
-	// Set text and measure once for centered placement on screen.
-	tutorialOverlay.textContent = text
-	tutorialOverlay.style.visibility = "hidden"
-	tutorialOverlay.offsetHeight // force reflow
-
-	let padding = 40
-	let textShadowBuffer = 20
-	let measuredWidth = tutorialOverlay.offsetWidth || 300
-	let measuredHeight = tutorialOverlay.offsetHeight || 30
-	let textWidth = measuredWidth + textShadowBuffer * 2
-	let textHeight = measuredHeight + textShadowBuffer * 2
-	let textHalfWidth = textWidth / 2
-	let textHalfHeight = textHeight / 2
-	
-	// Base centered position
-	let xPos = canvas.width / 2
-	let yPos = canvas.height * 0.5
-	
-	// For step 1, position the text above the ball and remember that position.
-	if (tutorialStep === 1) {
-		let ballRadius = getBallRadius()
-		let paddingY = padding
-		let topExclusionY = canvas.height * 0.2
-		// Place the text three ball-radii (1.5 diameters) above the ball.
-		let baseY = (ball?.yPos ?? (canvas.height - paddingY - textHalfHeight)) - (3 * ballRadius)
-		// Clamp inside safe region.
-		yPos = Math.max(
-			topExclusionY + textHalfHeight + paddingY,
-			Math.min(baseY, canvas.height - paddingY - textHalfHeight)
-		)
-	}
-	
-	// For step 3, reuse the exact position recorded from step 1 (if available),
-	// so it visually matches the step 1 location on all levels.
-	if (tutorialStep === 3 && tutorialLastX !== null && tutorialLastY !== null) {
-		xPos = tutorialLastX
-		yPos = tutorialLastY
-	}
-	
-	// For level 1, when we're on step 1, remember the absolute position we used.
-	if (level === 1 && tutorialStep === 1) {
-		tutorialLastX = xPos
-		tutorialLastY = yPos
-	}
-
-	tutorialOverlay.style.left = xPos + "px"
-	tutorialOverlay.style.top = yPos + "px"
-	tutorialOverlay.style.opacity = "1"
-	tutorialOverlay.style.visibility = "visible"
 }
 
 function isObjectCloseToObject(objectA, distance, objectB) {

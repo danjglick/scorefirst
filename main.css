@@ -1,7 +1,7 @@
 body {
   margin: 0;
   padding: 0;
-  background-color: black;
+  background-color: #011910;
 }
 
 #canvasContainer {
@@ -69,32 +69,4 @@ body {
   -webkit-tap-highlight-color: transparent;
   user-select: none;
   -webkit-user-select: none;
-}
-
-#tutorialOverlay {
-  position: absolute;
-  color: white;
-  font-size: 24px;
-  font-family: Arial;
-  pointer-events: none;
-  display: block;
-  visibility: hidden;
-  opacity: 0;
-  transition: opacity 0.6s ease-out;
-  text-align: center;
-  text-shadow: 
-    -2px -2px 0 black,
-    2px -2px 0 black,
-    -2px 2px 0 black,
-    2px 2px 0 black,
-    -2px 0 0 black,
-    2px 0 0 black,
-    0 -2px 0 black,
-    0 2px 0 black;
-  transform: translate(-50%, -80%);
-}
-
-/* Trophy hint text ("then collect the trophy") – match tutorial fade timing */
-#trophyHintOverlay {
-  transition: opacity 0.6s ease-out;
 }
