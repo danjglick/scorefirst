@@ -7,7 +7,7 @@ function getShim() { return (canvas?.width || window.innerWidth) / 10 }
 function getBallRadius() { return (canvas?.width || window.innerWidth) / 20 }
 function getTargetRadius() { return (canvas?.width || window.innerWidth) / 20 }
 const SPECIAL_ITEM_COOLDOWN = 1000 // ms between activations for all special items
-const FRICTION = .99
+const FRICTION = .97
 const FLING_DIVISOR = 2
 const BALL_STOP_SPEED = 10 // Higher threshold so we treat the ball as "stopped" sooner
 const TOUCH_TOLERANCE = 20 // Extra pixels for touch detection
@@ -133,6 +133,9 @@ let level1Step2TutorialStartTime = null // Track when level 1 step 2 tutorial sh
 let level1Step2TutorialVisible = false // Track if level 1 step 2 tutorial is visible
 let level1Step3TutorialStartTime = null // Track when level 1 step 3 tutorial should appear
 let level1Step3TutorialVisible = false // Track if level 1 step 3 tutorial is visible
+let level2MessageStartTime = null // Track when level 2 message should appear
+let level2MessageVisible = false // Track if level 2 message is visible
+let level2InitialBallY = null // Store initial ball Y position for level 2 message
 
 // Track if user has ever executed a swap
 let hasExecutedSwap = false
@@ -188,6 +191,9 @@ function generateLevel(isRetry = false, fewerSprites = false) {
 	level1Step2TutorialVisible = false
 	level1Step3TutorialStartTime = null
 	level1Step3TutorialVisible = false
+	level2MessageStartTime = null
+	level2MessageVisible = false
+	level2InitialBallY = null
 	
 	// Check tries before resetting - if retrying with tries > 0, restore saved positions
 	let shouldRestorePositions = isRetry && !fewerSprites && tries > 0
@@ -2397,6 +2403,11 @@ function placeBall() {
 		isBeingFlung: false
 	}
 	
+	// Store initial ball Y position for level 2 message
+	if (level === 2) {
+		level2InitialBallY = yPos
+	}
+	
 	// Store initial ball Y position for level 1 tutorial text
 	if (level === 1) {
 		level1InitialBallY = yPos
@@ -2700,14 +2711,14 @@ function placeTrophy() {
 }
 
 function placeTargets() {
-	// All levels: 4 targets
-	let targetCount = 4
+	// All levels: 5 targets
+	let targetCount = 5
 	placeTargetsWithCount(targetCount)
 }
 
 function placeObstacles() {
-	// All levels: 12 obstacles
-	let obstacleCount = 12
+	// All levels: 5 obstacles
+	let obstacleCount = 5
 	placeObstaclesWithCount(obstacleCount)
 }
 
@@ -3823,6 +3834,12 @@ function handleCollisionWithTarget() {
 			// Increment completion score when a target is collected
 			completionScore++
 			
+			// On level 2, hide message when first target is hit
+			if (level === 2 && level2MessageVisible) {
+				level2MessageVisible = false
+				level2MessageStartTime = null
+			}
+			
 			
 			// Fade away obstacles when last target is collected
 			// Check this BEFORE the bush effect early return so level completion still works
@@ -4468,6 +4485,10 @@ function draw() {
 				if (level === 1 && level1TutorialPopupStartTime === null) {
 					level1TutorialPopupStartTime = Date.now() + 1000
 				}
+				// On level 2, show message 1 second after ball fade-in completes
+				if (level === 2 && level2MessageStartTime === null) {
+					level2MessageStartTime = Date.now() + 1000
+				}
 			}
 		} else if (!wormholeTeleportPending && !ballHiddenForNextLevel) {
 			// Ensure ball is fully visible after fade-in completes
@@ -4562,6 +4583,11 @@ function draw() {
 		level1Step3TutorialVisible = true
 	}
 	
+	// Check if level 2 message should be shown
+	if (level === 2 && level2MessageStartTime !== null && Date.now() >= level2MessageStartTime && !level2MessageVisible) {
+		level2MessageVisible = true
+	}
+	
 	drawTargets()
 	drawObstacles()
 	drawLightning()
@@ -4583,14 +4609,14 @@ function draw() {
 		let radius = getBallRadius()
 		ctx.save()
 		ctx.fillStyle = "#ffffff"
-		let fontSize = Math.min(24, canvas.width / 25)
+		let fontSize = Math.min(30, canvas.width / 18)
 		ctx.font = "bold " + fontSize + "px Arial"
 		ctx.textAlign = "center"
 		ctx.textBaseline = "bottom"
 		// Fixed position: centered horizontally, positioned above initial ball position
 		let lineHeight = fontSize * 1.2 // Line spacing
 		let baseY = level1InitialBallY - radius - 50
-		ctx.fillText("1. Fling the smiley face", canvas.width / 2, baseY)
+		ctx.fillText("fling the smiley face", canvas.width / 2, baseY)
 		ctx.fillText("at a carrot", canvas.width / 2, baseY + lineHeight)
 		ctx.restore()
 	}
@@ -4601,14 +4627,14 @@ function draw() {
 		let radius = getBallRadius()
 		ctx.save()
 		ctx.fillStyle = "#ffffff"
-		let fontSize = Math.min(24, canvas.width / 25)
+		let fontSize = Math.min(30, canvas.width / 18)
 		ctx.font = "bold " + fontSize + "px Arial"
 		ctx.textAlign = "center"
 		ctx.textBaseline = "bottom"
 		// Fixed position: centered horizontally, positioned above initial ball position
 		let lineHeight = fontSize * 1.2 // Line spacing
 		let baseY = level1InitialBallY - radius - 50
-		ctx.fillText("2. Get all the carrots in one shot", canvas.width / 2, baseY)
+		ctx.fillText("get all the carrots in one shot", canvas.width / 2, baseY)
 		ctx.fillText("to move on to the next garden", canvas.width / 2, baseY + lineHeight)
 		ctx.restore()
 	}
@@ -4619,15 +4645,30 @@ function draw() {
 		let radius = getBallRadius()
 		ctx.save()
 		ctx.fillStyle = "#ffffff"
-		let fontSize = Math.min(24, canvas.width / 25)
+		let fontSize = Math.min(30, canvas.width / 18)
 		ctx.font = "bold " + fontSize + "px Arial"
 		ctx.textAlign = "center"
 		ctx.textBaseline = "bottom"
 		// Fixed position: centered horizontally, positioned above initial ball position
 		let lineHeight = fontSize * 1.2 // Line spacing
 		let baseY = level1InitialBallY - radius - 50
-		ctx.fillText("3. Swap any two objects", canvas.width / 2, baseY)
+		ctx.fillText("swap any two objects", canvas.width / 2, baseY)
 		ctx.fillText("by tapping them", canvas.width / 2, baseY + lineHeight)
+		ctx.restore()
+	}
+	
+	// Draw level 2 message (fixed position above initial ball position)
+	if (level === 2 && level2MessageVisible && level2InitialBallY !== null) {
+		let radius = getBallRadius()
+		ctx.save()
+		ctx.fillStyle = "#ffffff"
+		let fontSize = Math.min(30, canvas.width / 18)
+		ctx.font = "bold " + fontSize + "px Arial"
+		ctx.textAlign = "center"
+		ctx.textBaseline = "bottom"
+		// Fixed position: centered horizontally, positioned above initial ball position
+		let baseY = level2InitialBallY - radius - 50
+		ctx.fillText("think carefully and aim true", canvas.width / 2, baseY)
 		ctx.restore()
 	}
 	
