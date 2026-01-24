@@ -109,6 +109,7 @@ let autoResetBallToY = 0
 let obstacleFadeOutCompleteTime = null // Track when obstacles finish fading out
 let ballFadeOutStartedTime = null // Track when ball fade-out started (kept even after ball finishes)
 let tries = 0
+let totalFlingsThisSession = 0 // Track total flings across all levels in game session
 let levelScore = 0
 let totalScore = 0
 let pointsThisLevel = 0 // Track points gained during current level for retry
@@ -2334,6 +2335,7 @@ function handleTouchmove(e) {
 			// Reset star hit flag when starting a new try
 			starHitThisTry = false
 			tries++
+			totalFlingsThisSession++
 		}
 		ball.xVel = (touch2.xPos - touch1.xPos) / FLING_DIVISOR
 		ball.yVel = (touch2.yPos - touch1.yPos) / FLING_DIVISOR
@@ -2453,15 +2455,9 @@ function placeBall() {
 		isBeingFlung: false
 	}
 	
-	// Store initial ball Y position for level 2 message
-	if (level === 2) {
-		level2InitialBallY = yPos
-	}
-	
-	// Store initial ball Y position for level 1 tutorial text
-	if (level === 1) {
-		level1InitialBallY = yPos
-	}
+	// Store initial ball Y position for tutorial texts (all levels)
+	level1InitialBallY = yPos
+	level2InitialBallY = yPos
 }
 
 function placeTargetsWithCount(targetCount) {
@@ -2762,13 +2758,13 @@ function placeTrophy() {
 
 function placeTargets() {
 	// All levels: 4 targets
-	let targetCount = 3
+	let targetCount = 4
 	placeTargetsWithCount(targetCount)
 }
 
 function placeObstacles() {
 	// All levels: 5 obstacles
-	let obstacleCount = 9
+	let obstacleCount = 12
 	placeObstaclesWithCount(obstacleCount)
 }
 
@@ -3539,18 +3535,23 @@ function moveBall() {
 			ball.yPos = autoResetBallToY
 			autoResetActive = false
 			
-			// On level 1, show step 2 tutorial immediately when auto-reset completes (when tries == 1)
-			if (level === 1 && tries === 1) {
+			// Show step 2 when ready for 2nd fling of game session
+			if (totalFlingsThisSession === 1 && !level1Step2TutorialVisible) {
 				level1Step2TutorialVisible = true
 				level1Step2TutorialStartTime = Date.now() // Set to now so it appears immediately
 			}
 			
-			// On level 1, show step 3 tutorial immediately when auto-reset completes (when tries == 2)
-			// Only show once per game session
-			if (level === 1 && tries === 2 && !level1Step3TutorialShownThisSession) {
+			// Show step 3 when ready for 3rd fling of game session (only once)
+			if (totalFlingsThisSession === 2 && !level1Step3TutorialShownThisSession) {
 				level1Step3TutorialVisible = true
 				level1Step3TutorialStartTime = Date.now() // Set to now so it appears immediately
 				level1Step3TutorialShownThisSession = true // Mark as shown this session
+			}
+			
+			// Show step 4 when ready for 4th fling of game session (only once)
+			if (totalFlingsThisSession === 3 && !level2MessageVisible && level2MessageStartTime === null) {
+				level2MessageVisible = true
+				level2MessageStartTime = Date.now() // Set to now so it appears immediately
 			}
 		}
 		return
@@ -3613,6 +3614,21 @@ function moveBall() {
 				// Mark that we've completed at least one level
 				hasCompletedALevel = true
 				
+				// Hide the current tutorial step when level completes
+				if (totalFlingsThisSession === 1) {
+					level1TutorialPopupVisible = false
+					level1TutorialPopupStartTime = null
+				} else if (totalFlingsThisSession === 2) {
+					level1Step2TutorialVisible = false
+					level1Step2TutorialStartTime = null
+				} else if (totalFlingsThisSession === 3) {
+					level1Step3TutorialVisible = false
+					level1Step3TutorialStartTime = null
+				} else if (totalFlingsThisSession === 4) {
+					level2MessageVisible = false
+					level2MessageStartTime = null
+				}
+				
 				// Obstacles and special items will start fading out 1 second after ball fade-out starts
 				// (handled in the update loop)
 			}, 500)
@@ -3670,25 +3686,24 @@ function moveBall() {
 
 			shotActive = false
 
-			// On level 1, hide the current tutorial step when auto-reset starts
-			// tries is already incremented when ball is flung, so:
-			// tries == 1 means we're starting auto-reset for try 1, hide step 1
-			// tries == 2 means we're starting auto-reset for try 2, hide step 2
-			// tries == 3 means we're starting auto-reset for try 3, hide step 3
-			if (level === 1) {
-				if (tries === 1) {
-					// Hiding step 1 when auto-reset starts for try 1
-					level1TutorialPopupVisible = false
-					level1TutorialPopupStartTime = null
-				} else if (tries === 2) {
-					// Hiding step 2 when auto-reset starts for try 2
-					level1Step2TutorialVisible = false
-					level1Step2TutorialStartTime = null
-				} else if (tries === 3) {
-					// Hiding step 3 when auto-reset starts for try 3
-					level1Step3TutorialVisible = false
-					level1Step3TutorialStartTime = null
-				}
+			// Hide the current tutorial step when auto-reset starts
+			// totalFlingsThisSession is already incremented when ball is flung, so:
+			// totalFlingsThisSession == 1 means we're starting auto-reset after 1st fling, hide step 1
+			// totalFlingsThisSession == 2 means we're starting auto-reset after 2nd fling, hide step 2
+			// totalFlingsThisSession == 3 means we're starting auto-reset after 3rd fling, hide step 3
+			// totalFlingsThisSession == 4 means we're starting auto-reset after 4th fling, hide step 4
+			if (totalFlingsThisSession === 1) {
+				level1TutorialPopupVisible = false
+				level1TutorialPopupStartTime = null
+			} else if (totalFlingsThisSession === 2) {
+				level1Step2TutorialVisible = false
+				level1Step2TutorialStartTime = null
+			} else if (totalFlingsThisSession === 3) {
+				level1Step3TutorialVisible = false
+				level1Step3TutorialStartTime = null
+			} else if (totalFlingsThisSession === 4) {
+				level2MessageVisible = false
+				level2MessageStartTime = null
 			}
 
 			// Set up ball auto-reset animation
@@ -3952,20 +3967,19 @@ function handleCollisionWithObstacle() {
 				// tries == 1 means we're starting auto-reset for try 1, hide step 1
 				// tries == 2 means we're starting auto-reset for try 2, hide step 2
 				// tries == 3 means we're starting auto-reset for try 3, hide step 3
-				if (level === 1) {
-					if (tries === 1) {
-						// Hiding step 1 when auto-reset starts for try 1
-						level1TutorialPopupVisible = false
-						level1TutorialPopupStartTime = null
-					} else if (tries === 2) {
-						// Hiding step 2 when auto-reset starts for try 2
-						level1Step2TutorialVisible = false
-						level1Step2TutorialStartTime = null
-					} else if (tries === 3) {
-						// Hiding step 3 when auto-reset starts for try 3
-						level1Step3TutorialVisible = false
-						level1Step3TutorialStartTime = null
-					}
+				// Hide the current tutorial step when auto-reset starts
+				if (totalFlingsThisSession === 1) {
+					level1TutorialPopupVisible = false
+					level1TutorialPopupStartTime = null
+				} else if (totalFlingsThisSession === 2) {
+					level1Step2TutorialVisible = false
+					level1Step2TutorialStartTime = null
+				} else if (totalFlingsThisSession === 3) {
+					level1Step3TutorialVisible = false
+					level1Step3TutorialStartTime = null
+				} else if (totalFlingsThisSession === 4) {
+					level2MessageVisible = false
+					level2MessageStartTime = null
 				}
 				
 				// Set up ball auto-reset animation
@@ -4537,8 +4551,17 @@ function draw() {
 				if (level === 1 && level1TutorialPopupStartTime === null) {
 					level1TutorialPopupStartTime = Date.now() + 1000
 				}
-				// On level 2, show message 1 second after ball fade-in completes
-				if (level === 2 && level2MessageStartTime === null) {
+				// Show step 2 when ready for 2nd fling (after level completion)
+				if (totalFlingsThisSession === 1 && !level1Step2TutorialVisible && level1Step2TutorialStartTime === null) {
+					level1Step2TutorialStartTime = Date.now() + 1000
+				}
+				// Show step 3 when ready for 3rd fling (after level completion, only once per session)
+				if (totalFlingsThisSession === 2 && !level1Step3TutorialShownThisSession && level1Step3TutorialStartTime === null) {
+					level1Step3TutorialStartTime = Date.now() + 1000
+					level1Step3TutorialShownThisSession = true
+				}
+				// Show step 4 when ready for 4th fling (after level completion)
+				if (totalFlingsThisSession === 3 && !level2MessageVisible && level2MessageStartTime === null) {
 					level2MessageStartTime = Date.now() + 1000
 				}
 			}
@@ -4625,18 +4648,18 @@ function draw() {
 		level1TutorialPopupVisible = true
 	}
 	
-	// Check if level 1 step 2 tutorial should be shown
-	if (level === 1 && tries === 1 && level1Step2TutorialStartTime !== null && Date.now() >= level1Step2TutorialStartTime && !level1Step2TutorialVisible) {
+	// Check if step 2 tutorial should be shown
+	if (level1Step2TutorialStartTime !== null && Date.now() >= level1Step2TutorialStartTime && !level1Step2TutorialVisible) {
 		level1Step2TutorialVisible = true
 	}
 	
-	// Check if level 1 step 3 tutorial should be shown
-	if (level === 1 && tries === 2 && level1Step3TutorialStartTime !== null && Date.now() >= level1Step3TutorialStartTime && !level1Step3TutorialVisible) {
+	// Check if step 3 tutorial should be shown
+	if (level1Step3TutorialStartTime !== null && Date.now() >= level1Step3TutorialStartTime && !level1Step3TutorialVisible) {
 		level1Step3TutorialVisible = true
 	}
 	
-	// Check if level 2 message should be shown
-	if (level === 2 && level2MessageStartTime !== null && Date.now() >= level2MessageStartTime && !level2MessageVisible) {
+	// Check if step 4 message should be shown
+	if (level2MessageStartTime !== null && Date.now() >= level2MessageStartTime && !level2MessageVisible) {
 		level2MessageVisible = true
 	}
 	
@@ -4676,9 +4699,9 @@ function draw() {
 		ctx.restore()
 	}
 	
-	// Draw level 1 step 2 instruction text (fixed position above initial ball position)
-	// Step 2 should be visible when tries >= 1 (after auto-reset for try 1) until auto-reset starts for try 2
-	if (level === 1 && tries >= 1 && level1Step2TutorialVisible && level1InitialBallY !== null) {
+	// Draw step 2 instruction text (fixed position above initial ball position)
+	// Step 2 shows when ready for 2nd fling of game session
+	if (level1Step2TutorialVisible && level1InitialBallY !== null) {
 		let radius = getBallRadius()
 		ctx.save()
 		ctx.fillStyle = "#ffffff"
@@ -4697,9 +4720,9 @@ function draw() {
 		ctx.restore()
 	}
 	
-	// Draw level 1 step 3 instruction text (fixed position above initial ball position)
-	// Step 3 should be visible when tries >= 2 (after auto-reset for try 2) until auto-reset starts for try 3
-	if (level === 1 && tries >= 2 && level1Step3TutorialVisible && level1InitialBallY !== null) {
+	// Draw step 3 instruction text (fixed position above initial ball position)
+	// Step 3 shows when ready for 3rd fling of game session
+	if (level1Step3TutorialVisible && level1InitialBallY !== null) {
 		let radius = getBallRadius()
 		ctx.save()
 		ctx.fillStyle = "#ffffff"
@@ -4718,8 +4741,9 @@ function draw() {
 		ctx.restore()
 	}
 	
-	// Draw level 2 message (fixed position above initial ball position)
-	if (level === 2 && level2MessageVisible && level2InitialBallY !== null) {
+	// Draw step 4 message (fixed position above initial ball position)
+	// Step 4 shows when ready for 4th fling of game session
+	if (level2MessageVisible && level2InitialBallY !== null) {
 		let radius = getBallRadius()
 		ctx.save()
 		ctx.fillStyle = "#ffffff"
