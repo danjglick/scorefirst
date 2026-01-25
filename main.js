@@ -2746,13 +2746,13 @@ function placeTrophy() {
 
 function placeTargets() {
 	// All levels: 4 targets
-	let targetCount = 3
+	let targetCount = 5
 	placeTargetsWithCount(targetCount)
 }
 
 function placeObstacles() {
 	// All levels: 5 obstacles
-	let obstacleCount = 9
+	let obstacleCount = 5
 	placeObstaclesWithCount(obstacleCount)
 }
 
