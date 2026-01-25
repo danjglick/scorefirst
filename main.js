@@ -2752,7 +2752,7 @@ function placeTargets() {
 
 function placeObstacles() {
 	// All levels: 5 obstacles
-	let obstacleCount = 12
+	let obstacleCount = 9
 	placeObstaclesWithCount(obstacleCount)
 }
 
